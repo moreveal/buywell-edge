@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://buywell.pro/schemas/edge/protocol-v2.json",
+  "title": "Buywell Edge protocol v2 message",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocolVersion", "deviceId", "credential", "edgeVersion", "platform"],
+      "properties": {
+        "type": { "const": "authenticate" },
+        "protocolVersion": { "const": "2.0.0" },
+        "deviceId": { "type": "string", "format": "uuid" },
+        "credential": { "type": "string", "minLength": 32, "maxLength": 256 },
+        "edgeVersion": { "type": "string" },
+        "platform": { "type": "string" },
+        "hostname": { "type": "string", "maxLength": 120 }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["type", "connections"],
+      "properties": {
+        "type": { "const": "connection.snapshot" },
+        "requestId": { "type": "string" },
+        "connections": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "required": ["connectionId", "extensionId", "extensionVersion", "packageDigest", "enabled", "health"]
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["type", "jobId", "leaseToken", "connectionId", "instanceId", "result"],
+      "properties": {
+        "type": { "const": "job.result" },
+        "jobId": { "type": "string", "format": "uuid" },
+        "leaseToken": { "type": "string" },
+        "connectionId": { "type": "string", "format": "uuid" },
+        "instanceId": { "type": "string", "format": "uuid" },
+        "result": { "type": "object" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "jobId", "leaseToken", "connectionId"],
+      "properties": {
+        "type": { "const": "job.lease.extend" },
+        "jobId": { "type": "string", "format": "uuid" },
+        "leaseToken": { "type": "string", "format": "uuid" },
+        "connectionId": { "type": "string", "format": "uuid" }
+      }
+    }
+  ]
+}

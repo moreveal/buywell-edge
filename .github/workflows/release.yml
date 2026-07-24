@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            asset: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            asset: linux-aarch64
+          - runner: windows-latest
+            asset: windows-x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ".[test]" pyinstaller
+      - run: pytest
+      - run: >-
+          pyinstaller --onedir --name buywell-edge
+          --collect-all buywell_edge
+          --collect-all buywell_edge_sdk
+          --collect-all pip
+          --collect-all setuptools
+          --collect-all wheel
+          src/buywell_edge/__main__.py
+      - run: python tools/build_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buywell-edge-${{ matrix.asset }}
+          path: |
+            dist/buywell-edge-*.zip
+            dist/buywell-edge-*.zip.sha256
+            dist/buywell-edge-*.tar.gz
+            dist/buywell-edge-*.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/*.zip
+            artifacts/*.tar.gz
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*

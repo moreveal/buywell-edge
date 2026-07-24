@@ -1,0 +1,20 @@
+[Unit]
+Description=Buywell Edge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=buywell-edge
+Group=buywell-edge
+Environment=BUYWELL_EDGE_STATE_DIR=/var/lib/buywell-edge
+ExecStart=/opt/buywell-edge/current/bin/buywell-edge run
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/buywell-edge
+
+[Install]
+WantedBy=multi-user.target

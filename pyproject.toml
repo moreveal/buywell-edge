@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "buywell-edge"
+version = "0.1.0"
+description = "Buywell Edge daemon, CLI, and public Python extension SDK"
+requires-python = ">=3.12"
+license = { text = "GPL-3.0-only" }
+dependencies = [
+  "cryptography>=44,<46",
+  "httpx>=0.28,<0.29",
+  "pydantic>=2.10,<3",
+  "rich>=13.9,<15",
+  "typer>=0.15,<1",
+  "websockets>=14,<17",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+  "jsonschema>=4.23,<5",
+]
+
+[project.scripts]
+buywell-edge = "buywell_edge.cli:app"
+buywell-edge-extension = "buywell_edge_sdk.runtime:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/buywell_edge", "src/buywell_edge_sdk"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+asyncio_mode = "auto"

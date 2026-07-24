@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://buywell.pro/schemas/edge/manifest-v2.json",
+  "title": "Buywell Edge package manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "protocolVersion", "extension", "runtime", "executionPolicy", "configuration", "permissions", "contracts"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "protocolVersion": { "const": "2.0.0" },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "version", "displayName", "publisher"],
+      "properties": {
+        "kind": { "enum": ["module", "adapter-driver"] },
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$" },
+        "version": { "type": "string" },
+        "displayName": { "$ref": "#/$defs/localized" },
+        "description": { "$ref": "#/$defs/localized" },
+        "publisher": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "python", "sdk", "entrypoint", "dependencies"],
+      "properties": {
+        "language": { "const": "python" },
+        "python": { "type": "string" },
+        "sdk": { "type": "string" },
+        "entrypoint": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$" },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "anyOf": [
+              { "pattern": "^[A-Za-z0-9_.-]+==[A-Za-z0-9_.+!-]+$" },
+              { "pattern": "^[A-Za-z0-9_.-]+\\s*@\\s*https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/archive/[0-9a-f]{40}\\.(?:zip|tar\\.gz)$" }
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "executionPolicy": { "enum": ["edge", "edge_required"] },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "secretFields"],
+      "properties": {
+        "schema": { "type": "object" },
+        "secretFields": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_domains", "local_paths", "subprocesses"],
+      "properties": {
+        "network_domains": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "local_paths": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "subprocesses": { "type": "boolean" }
+      }
+    },
+    "contracts": { "type": "object" },
+    "documentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "guides": { "$ref": "#/$defs/localizedFiles" },
+        "changelog": { "$ref": "#/$defs/localizedFiles" }
+      },
+      "minProperties": 1
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moduleManifest", "contractMode"],
+      "properties": {
+        "moduleManifest": { "type": "object" },
+        "contractMode": { "const": "preserve-v1" }
+      }
+    },
+    "package": { "type": "object" },
+    "signing": { "type": "object" }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ru", "en"],
+      "properties": {
+        "ru": { "type": "string", "minLength": 1 },
+        "en": { "type": "string", "minLength": 1 }
+      }
+    },
+    "localizedFiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ru", "en"],
+      "properties": {
+        "ru": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+\\.md$" },
+        "en": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+\\.md$" }
+      }
+    }
+  }
+}
