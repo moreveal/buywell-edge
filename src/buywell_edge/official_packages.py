@@ -37,9 +37,9 @@ OFFICIAL_PACKAGES = {
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
-            reference="adapter.ns-gifts@1.0.1",
-            filename="adapter.ns-gifts-1.0.1.buywell-edge.zip",
-            archive_sha256="2df42b2da5710408965bae6a8f70be799405d5c479600e69d2129b6b743e0320",
+            reference="adapter.ns-gifts@1.0.2",
+            filename="adapter.ns-gifts-1.0.2.buywell-edge.zip",
+            archive_sha256="b7e44257ea8e1e85fbcb5b89ecfc0cb74b2730046c515e3977a8b2e1cf29647f",
             public_key=_PUBLIC_KEY,
         ),
     )

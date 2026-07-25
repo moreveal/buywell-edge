@@ -13,7 +13,7 @@ from buywell_edge import system_user
     [
         (["status"], True),
         (["connect", "BW-ABCDEFGH"], True),
-        (["module", "install", "adapter.ns-gifts@1.0.1"], True),
+        (["module", "install", "adapter.ns-gifts@1.0.2"], True),
         (["connection", "add", "adapter.ns-gifts"], True),
         (["module", "build", "package:definition"], False),
         (["update"], False),
