@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import platform
 import random
 from collections.abc import Awaitable, Callable
@@ -18,6 +19,7 @@ from .secrets import SecretVault
 from .storage import EdgeStore
 
 MessageHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]]
+logger = logging.getLogger(__name__)
 
 
 class GatewayClient:
@@ -76,7 +78,12 @@ class GatewayClient:
                 stopping.cancel()
                 await asyncio.gather(session, stopping, return_exceptions=True)
                 raise
-            except Exception:
+            except Exception as error:
+                logger.warning(
+                    "Buywell gateway session failed (%s): %s",
+                    type(error).__name__,
+                    error,
+                )
                 stopping.cancel()
                 await asyncio.gather(stopping, return_exceptions=True)
                 try:
