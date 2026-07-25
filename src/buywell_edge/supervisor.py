@@ -30,6 +30,10 @@ class ExtensionProcess:
 EventHandler = Callable[[ExtensionProcess, dict[str, Any]], Awaitable[None]]
 
 
+def job_idempotency_key(job: dict[str, Any]) -> str:
+    return str(job.get("idempotencyKey") or job.get("requestId") or job["jobId"])
+
+
 class ExtensionSupervisor:
     def __init__(
         self,
@@ -179,7 +183,7 @@ class ExtensionSupervisor:
 
     async def execute(self, connection_id: str, job: dict[str, Any]) -> dict[str, Any]:
         item = self.processes[connection_id]
-        key = str(job["idempotencyKey"])
+        key = job_idempotency_key(job)
         existing = self.store.idempotency_result(key)
         if existing and existing["status"] in ("success", "error"):
             return dict(existing["value"])
