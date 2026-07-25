@@ -26,7 +26,12 @@ temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 curl --fail --location --silent --show-error "$release_url" -o "$temporary/edge.tar.gz"
 curl --fail --location --silent --show-error "$checksum_url" -o "$temporary/edge.tar.gz.sha256"
-(cd "$temporary" && sha256sum -c edge.tar.gz.sha256)
+expected_checksum="$(awk 'NR == 1 { print $1 }' "$temporary/edge.tar.gz.sha256")"
+actual_checksum="$(sha256sum "$temporary/edge.tar.gz" | awk '{ print $1 }')"
+if [ -z "$expected_checksum" ] || [ "$actual_checksum" != "$expected_checksum" ]; then
+  echo "Buywell Edge archive checksum verification failed." >&2
+  exit 1
+fi
 release_name="$(sha256sum "$temporary/edge.tar.gz" | cut -c1-16)"
 mkdir "$INSTALL_ROOT/releases/$release_name"
 tar -xzf "$temporary/edge.tar.gz" -C "$INSTALL_ROOT/releases/$release_name"
