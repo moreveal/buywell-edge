@@ -92,6 +92,8 @@ class GatewayClient:
             authenticated = json.loads(await asyncio.wait_for(socket.recv(), 15))
             if authenticated.get("type") != "authenticated":
                 raise RuntimeError("Edge authentication failed")
+            if authenticated.get("locale") in {"ru", "en"}:
+                self.store.set_metadata("locale", authenticated["locale"])
             await self.handler({"type": "gateway.connected"})
 
             async def heartbeat() -> None:
