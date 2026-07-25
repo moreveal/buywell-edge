@@ -215,7 +215,12 @@ class EdgeService:
                         await self.supervisor.health(connection_id)
                         changed = True
                     running = self.supervisor.processes[connection_id].connection
-                    if current.extension_version != running.extension_version or current.package_digest != running.package_digest:
+                    if (
+                        current.extension_version != running.extension_version
+                        or current.package_digest != running.package_digest
+                        or current.config != running.config
+                        or current.secret_ref != running.secret_ref
+                    ):
                         # stop() takes the process request lock, so in-flight jobs drain
                         # before the migration snapshot is taken.
                         await self.supervisor.stop(connection_id)

@@ -74,9 +74,7 @@ def _localized_name(manifest: dict[str, object], locale: str) -> str:
     return str(extension["id"])
 
 
-def _prompt_value(label: str, schema: dict[str, object], default: object) -> object:
-    rendered_default = None if default is None else str(default)
-    value = Prompt.ask(label, default=rendered_default)
+def _coerce_value(value: str, schema: dict[str, object]) -> object:
     value_type = schema.get("type")
     if value_type == "boolean":
         return value.strip().lower() in {"1", "true", "yes", "y", "да"}
@@ -85,6 +83,11 @@ def _prompt_value(label: str, schema: dict[str, object], default: object) -> obj
     if value_type == "number":
         return float(value)
     return value
+
+
+def _prompt_value(label: str, schema: dict[str, object], default: object) -> object:
+    rendered_default = None if default is None else str(default)
+    return _coerce_value(Prompt.ask(label, default=rendered_default), schema)
 
 
 def _field_label(field: str, schema: dict[str, object], locale: str) -> str:
@@ -808,15 +811,75 @@ def connection_login(
     selected = _resolve_connection(service, connection)
     package = service.store.package(selected.extension_id, selected.extension_version, selected.package_digest)
     if not package:
-        raise typer.BadParameter("The connection package is not installed")
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Пакет этого подключения не установлен",
+                "The connection package is not installed",
+            )
+        )
     manifest, _ = package
-    secrets = json.loads(secrets_file.read_text("utf-8")) if secrets_file else {
-        field: typer.prompt(field.replace("_", " ").title(), hide_input=True)
-        for field in manifest["configuration"].get("secretFields", [])
-    }
-    service.vault.put(selected.secret_ref or f"connection:{selected.id}", {key: str(value) for key, value in secrets.items()})
-    service.store.update_health(selected.id, {"state": "offline", "message": None})
-    console.print("[green]Credentials updated locally.[/] Edge will verify the session.")
+    locale = _locale(service)
+    configuration = manifest.get("configuration") or {}
+    schema = configuration.get("schema") or {}
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    secret_fields = set(configuration.get("secretFields") or [])
+    config = dict(selected.config)
+    console.print(
+        _message(
+            service,
+            "Нажмите Enter, чтобы оставить текущее значение.",
+            "Press Enter to keep the current value.",
+        )
+    )
+    for field, field_schema in properties.items():
+        if field in secret_fields or _is_secret_schema(field_schema):
+            continue
+        label = _field_label(field, field_schema, locale)
+        current = config.get(field, field_schema.get("default"))
+        value = Prompt.ask(label, default="" if current is None else str(current))
+        if value:
+            config[field] = _coerce_value(value, field_schema)
+        elif field not in required and current is None:
+            config.pop(field, None)
+
+    previous_secrets = service.vault.get(selected.secret_ref)
+    secrets = dict(previous_secrets)
+    if secrets_file:
+        secrets.update(json.loads(secrets_file.read_text("utf-8")))
+    else:
+        for field in secret_fields:
+            field_schema = properties.get(field) or {}
+            label = _field_label(field, field_schema, locale)
+            value = typer.prompt(
+                f"{label} ({'Enter — оставить текущее' if locale == 'ru' else 'Enter to keep current'})",
+                default="",
+                hide_input=True,
+                show_default=False,
+            )
+            if value:
+                secrets[field] = value
+    secret_ref = f"connection:{selected.id}:{uuid.uuid4()}"
+    service.vault.put(secret_ref, {key: str(value) for key, value in secrets.items()})
+    service.store.upsert_connection(
+        replace(
+            selected,
+            config=config,
+            secret_ref=secret_ref,
+            health_state="offline",
+            health_message=None,
+        )
+    )
+    if selected.secret_ref:
+        service.vault.delete(selected.secret_ref)
+    console.print(
+        _message(
+            service,
+            "[green]Данные обновлены локально.[/] Edge перезапустит аккаунт и проверит авторизацию.",
+            "[green]Credentials updated locally.[/] Edge will restart the account and verify authentication.",
+        )
+    )
 
 
 @connection_app.command("status")

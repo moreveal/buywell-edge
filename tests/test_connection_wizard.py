@@ -24,10 +24,18 @@ def manifest() -> dict:
             "schema": {
                 "type": "object",
                 "properties": {
-                    "golden_key": {"type": "string", "title": "Golden Key"},
+                    "golden_key": {
+                        "type": "string",
+                        "x-buywell-label": {"ru": "Ключ FunPay", "en": "FunPay key"},
+                    },
+                    "user_agent": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "x-buywell-label": {"ru": "User-Agent браузера", "en": "Browser User-Agent"},
+                    },
                     "poll_interval_seconds": {
                         "type": "number",
-                        "title": "Poll interval",
+                        "x-buywell-label": {"ru": "Интервал проверки", "en": "Poll interval"},
                         "default": 6,
                     },
                 },
@@ -60,12 +68,12 @@ def test_wizard_selects_digest_and_supports_multiple_accounts(
     first = runner.invoke(
         app,
         ["connection", "add", "funpay.cardinal"],
-        input="\n\nsecret-one\n",
+        input="\n\n\nsecret-one\n",
     )
     second = runner.invoke(
         app,
         ["connection", "add", "funpay.cardinal"],
-        input="\n\nsecret-two\n",
+        input="\n\n\nsecret-two\n",
     )
 
     assert first.exit_code == 0, first.output
@@ -83,6 +91,52 @@ def test_wizard_selects_digest_and_supports_multiple_accounts(
     status = runner.invoke(app, ["connection", "status", "FunPay 2"])
     assert status.exit_code == 0, status.output
     assert '"name": "FunPay 2"' in status.output
+
+
+def test_login_prompts_for_module_fields_and_keeps_skipped_values(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    edge = service(tmp_path)
+    edge.store.upsert_connection(ConnectionRecord(
+        id="connection-1",
+        extension_id="funpay.cardinal",
+        extension_version="1.3.0",
+        package_digest="a" * 64,
+        display_name="Irohazaka",
+        kind="module",
+        enabled=True,
+        config={"user_agent": "old-agent", "poll_interval_seconds": 6},
+        secret_ref="connection:1",
+        health_state="auth_required",
+        health_message="Sign in again",
+        session_expires_at=None,
+        last_success_at=None,
+    ))
+    edge.vault.put("connection:1", {"golden_key": "old-key"})
+    monkeypatch.setattr("buywell_edge.cli._service", lambda: edge)
+
+    kept = CliRunner().invoke(
+        app,
+        ["connection", "login", "Irohazaka"],
+        input="\n\n\n",
+    )
+
+    assert kept.exit_code == 0, kept.output
+    assert "User-Agent браузера" in kept.output
+    selected = edge.store.connections()[0]
+    assert selected.config["user_agent"] == "old-agent"
+    assert edge.vault.get(selected.secret_ref)["golden_key"] == "old-key"
+
+    changed = CliRunner().invoke(
+        app,
+        ["connection", "login", "Irohazaka"],
+        input="new-agent\n\nnew-key\n",
+    )
+    assert changed.exit_code == 0, changed.output
+    selected = edge.store.connections()[0]
+    assert selected.config["user_agent"] == "new-agent"
+    assert edge.vault.get(selected.secret_ref)["golden_key"] == "new-key"
 
 
 def test_status_needs_no_hidden_id_for_single_connection(
