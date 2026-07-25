@@ -12,6 +12,19 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+libc_version="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }' || true)"
+if [ -z "$libc_version" ]; then
+  echo "Buywell Edge requires a glibc-based Linux distribution (glibc 2.28 or newer)." >&2
+  exit 1
+fi
+if ! awk -v current="$libc_version" 'BEGIN {
+  split(current, value, ".");
+  exit !((value[1] > 2) || (value[1] == 2 && value[2] >= 28));
+}'; then
+  echo "Buywell Edge requires glibc 2.28 or newer; this system has glibc $libc_version." >&2
+  exit 1
+fi
+
 architecture="$(uname -m)"
 case "$architecture" in
   x86_64) asset_arch="x86_64" ;;

@@ -10,18 +10,49 @@ permissions:
   attestations: write
 
 jobs:
-  build:
+  build-linux:
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
             asset: linux-x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64:latest
           - runner: ubuntu-24.04-arm
             asset: linux-aarch64
-          - runner: windows-latest
-            asset: windows-x86_64
+            container: quay.io/pypa/manylinux_2_28_aarch64:latest
     runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: /opt/python/cp312-cp312/bin/python -m pip install uv
+      - run: /opt/python/cp312-cp312/bin/uv python install 3.12
+      - run: /opt/python/cp312-cp312/bin/uv venv --python 3.12 .venv
+      - run: /opt/python/cp312-cp312/bin/uv pip install --python .venv/bin/python ".[test]" pyinstaller
+      - run: .venv/bin/python -m pytest
+      - run: >-
+          .venv/bin/pyinstaller --onedir --name buywell-edge
+          --collect-all buywell_edge
+          --collect-all buywell_edge_sdk
+          --collect-all pip
+          --collect-all setuptools
+          --collect-all wheel
+          src/buywell_edge/__main__.py
+      - run: .venv/bin/python tools/check_glibc.py dist/buywell-edge --max 2.28
+      - run: .venv/bin/python tools/build_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buywell-edge-${{ matrix.asset }}
+          path: |
+            dist/buywell-edge-*.zip
+            dist/buywell-edge-*.zip.sha256
+            dist/buywell-edge-*.tar.gz
+            dist/buywell-edge-*.tar.gz.sha256
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,16 +71,14 @@ jobs:
       - run: python tools/build_release.py
       - uses: actions/upload-artifact@v4
         with:
-          name: buywell-edge-${{ matrix.asset }}
+          name: buywell-edge-windows-x86_64
           path: |
             dist/buywell-edge-*.zip
             dist/buywell-edge-*.zip.sha256
-            dist/buywell-edge-*.tar.gz
-            dist/buywell-edge-*.tar.gz.sha256
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

@@ -19,6 +19,10 @@ Linux:
 curl -fsSL https://buywell.pro/edge/install.sh | sudo sh -s -- PAIR-CODE
 ```
 
+Linux releases support x86-64 and ARM64 distributions with glibc 2.28 or
+newer, including Debian 10+, Ubuntu 20.04+, and their current derivatives.
+The installer checks this requirement before changing the service.
+
 Windows PowerShell as Administrator:
 
 ```powershell
