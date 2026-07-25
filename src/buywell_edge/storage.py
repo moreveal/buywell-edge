@@ -199,7 +199,7 @@ class EdgeStore:
                 raise ValueError("The requested exact package version is not installed")
             previous = (str(connection["extension_version"]), str(connection["package_digest"]))
             database.execute(
-                "UPDATE connections SET extension_version=?,package_digest=?,health_state='offline',health_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE connections SET extension_version=?,package_digest=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (version, digest, connection_id),
             )
             database.execute(
@@ -207,6 +207,29 @@ class EdgeStore:
                 (connection_id, previous[0], version, json.dumps({"fromDigest": previous[1], "toDigest": digest})),
             )
             return previous
+
+    def schedule_package_cleanup(
+        self,
+        connection_id: str,
+        extension_id: str,
+        version: str,
+        digest: str,
+    ) -> None:
+        self.set_metadata(
+            f"package_cleanup:{connection_id}",
+            json.dumps({
+                "extensionId": extension_id,
+                "version": version,
+                "digest": digest,
+            }),
+        )
+
+    def pending_package_cleanup(self, connection_id: str) -> dict[str, str] | None:
+        value = self.metadata(f"package_cleanup:{connection_id}")
+        return json.loads(value) if value else None
+
+    def finish_package_cleanup(self, connection_id: str) -> None:
+        self.delete_metadata(f"package_cleanup:{connection_id}")
 
     def rollback_connection(self, connection_id: str) -> tuple[str, str]:
         with self._lock, self.connect() as database:

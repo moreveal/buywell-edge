@@ -214,6 +214,60 @@ def test_lists_and_switches_modules_without_internal_identifiers(
     assert selected.package_digest == "b" * 64
 
 
+def test_module_update_downloads_switches_and_schedules_old_package_cleanup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    edge = service(tmp_path)
+    edge.store.upsert_connection(ConnectionRecord(
+        id="hidden-connection-id",
+        extension_id="funpay.cardinal",
+        extension_version="1.3.0",
+        package_digest="a" * 64,
+        display_name="Irohazaka",
+        kind="module",
+        enabled=True,
+        config={},
+        secret_ref=None,
+        health_state="healthy",
+        health_message=None,
+        session_expires_at=None,
+        last_success_at="2026-07-25T12:00:00+00:00",
+    ))
+    updated = copy.deepcopy(manifest())
+    updated["extension"]["version"] = "1.3.1"
+    updated["package"]["digest"] = "b" * 64
+    target = tmp_path / "package-1.3.1"
+    target.mkdir()
+
+    def install(_archive, _trusted):
+        edge.store.register_package(updated, target)
+        return SimpleNamespace(manifest=updated, digest="b" * 64)
+
+    monkeypatch.setattr("buywell_edge.cli._service", lambda: edge)
+    monkeypatch.setattr(
+        "buywell_edge.cli.httpx.get",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            content=b"official archive",
+            raise_for_status=lambda: None,
+        ),
+    )
+    monkeypatch.setattr("buywell_edge.cli.verify_archive", lambda *_args: None)
+    monkeypatch.setattr(edge.packages, "install", install)
+
+    result = CliRunner().invoke(app, ["module", "update", "Irohazaka"])
+
+    assert result.exit_code == 0, result.output
+    selected = edge.store.connections()[0]
+    assert selected.extension_version == "1.3.1"
+    assert selected.health_state == "healthy"
+    assert edge.store.pending_package_cleanup(selected.id) == {
+        "extensionId": "funpay.cardinal",
+        "version": "1.3.0",
+        "digest": "a" * 64,
+    }
+
+
 def test_removes_connection_and_its_secrets(
     tmp_path: Path,
     monkeypatch,

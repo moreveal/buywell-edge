@@ -37,6 +37,15 @@ def test_adapter_secrets_are_discovered():
     manifest = extension.manifest()
     assert manifest["executionPolicy"] == "edge_required"
     assert manifest["configuration"]["secretFields"] == ["api_key"]
+    assert manifest["managedAdapter"] == {
+        "moduleVersion": manifest["extension"]["version"],
+        "dslNamespace": "example_supplier",
+        "definitionRevision": 1,
+    }
+    jsonschema.validate(
+        manifest,
+        json.loads((ROOT / "protocol" / "manifest-v2.schema.json").read_text("utf-8")),
+    )
 
 
 def test_package_is_deterministic_and_signed(tmp_path: Path):

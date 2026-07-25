@@ -5,6 +5,18 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "protocolVersion", "extension", "runtime", "executionPolicy", "configuration", "permissions", "contracts"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "extension": {
+            "properties": { "kind": { "const": "adapter-driver" } }
+          }
+        }
+      },
+      "then": { "required": ["managedAdapter"] }
+    }
+  ],
   "properties": {
     "schemaVersion": { "const": 2 },
     "protocolVersion": { "const": "2.0.0" },
@@ -80,6 +92,16 @@
       "properties": {
         "moduleManifest": { "type": "object" },
         "contractMode": { "const": "preserve-v1" }
+      }
+    },
+    "managedAdapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moduleVersion", "dslNamespace", "definitionRevision"],
+      "properties": {
+        "moduleVersion": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$" },
+        "dslNamespace": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "definitionRevision": { "type": "integer", "minimum": 1 }
       }
     },
     "package": { "type": "object" },

@@ -15,7 +15,7 @@ from pydantic_core import PydanticUndefined
 
 EDGE_PROTOCOL_VERSION = "2.0.0"
 EDGE_MANIFEST_VERSION = 2
-SDK_VERSION = "0.1.19"
+SDK_VERSION = "0.1.20"
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CONTRACT_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
@@ -196,6 +196,7 @@ class ExtensionDefinition:
     legacy_module_manifest: dict[str, Any] | None = field(default=None, repr=False)
     guides: LocalizedFiles | None = None
     changelog: LocalizedFiles | None = None
+    managed_adapter: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _validate_identity(self.extension_id, "extension id")
@@ -390,6 +391,8 @@ class ExtensionDefinition:
                 "moduleManifest": self.legacy_module_manifest,
                 "contractMode": "preserve-v1",
             }
+        if self.managed_adapter is not None:
+            manifest["managedAdapter"] = json.loads(json.dumps(self.managed_adapter))
         return manifest
 
 
@@ -464,7 +467,17 @@ def adapter_driver(
     dependencies: list[str] | None = None,
     guides: dict[str, str] | None = None,
     changelog: dict[str, str] | None = None,
+    adapter_version: str | None = None,
+    adapter_dsl_namespace: str | None = None,
+    adapter_definition_revision: int = 1,
 ) -> ExtensionDefinition:
+    managed_version = adapter_version or version
+    _validate_identity(managed_version, "version")
+    namespace = adapter_dsl_namespace or extension_id.removeprefix("adapter.").replace(".", "_").replace("-", "_")
+    if not re.fullmatch(r"^[a-z][a-z0-9_]{0,63}$", namespace):
+        raise ValueError("Adapter DSL namespace must be a lowercase identifier")
+    if adapter_definition_revision < 1:
+        raise ValueError("Adapter definition revision must be positive")
     return ExtensionDefinition(
         kind=ExtensionKind.ADAPTER_DRIVER,
         extension_id=extension_id,
@@ -478,4 +491,9 @@ def adapter_driver(
         dependencies=dependencies or [],
         guides=LocalizedFiles.model_validate(guides) if guides else None,
         changelog=LocalizedFiles.model_validate(changelog) if changelog else None,
+        managed_adapter={
+            "moduleVersion": managed_version,
+            "dslNamespace": namespace,
+            "definitionRevision": adapter_definition_revision,
+        },
     )

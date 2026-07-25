@@ -31,29 +31,41 @@ class EdgeService:
         self._job_tasks: set[asyncio.Task[None]] = set()
 
     def connection_snapshot(self, request_id: str | None = None) -> dict[str, Any]:
+        connections = []
+        for item in self.store.connections():
+            process = self.supervisor.processes.get(item.id)
+            reported = process.connection if process else item
+            package = self.store.package(
+                reported.extension_id,
+                reported.extension_version,
+                reported.package_digest,
+            )
+            connections.append({
+                "connectionId": item.id,
+                "extensionId": reported.extension_id,
+                "extensionVersion": reported.extension_version,
+                "packageDigest": reported.package_digest,
+                "displayName": item.display_name,
+                "kind": reported.kind,
+                "configurationState": "ready",
+                "instanceId": process.instance_id if process else None,
+                "enabled": item.enabled,
+                "health": {
+                    "state": item.health_state,
+                    "message": item.health_message,
+                    "sessionExpiresAt": item.session_expires_at,
+                    "lastSuccessAt": item.last_success_at,
+                },
+                **(
+                    {"manifest": package[0]}
+                    if reported.kind == "adapter-driver" and package
+                    else {}
+                ),
+            })
         return {
             "type": "connection.snapshot",
             "requestId": request_id,
-            "connections": [
-                {
-                    "connectionId": item.id,
-                    "extensionId": item.extension_id,
-                    "extensionVersion": item.extension_version,
-                    "packageDigest": item.package_digest,
-                    "displayName": item.display_name,
-                    "kind": item.kind,
-                    "configurationState": "ready",
-                    "instanceId": self.supervisor.processes.get(item.id).instance_id if item.id in self.supervisor.processes else None,
-                    "enabled": item.enabled,
-                    "health": {
-                        "state": item.health_state,
-                        "message": item.health_message,
-                        "sessionExpiresAt": item.session_expires_at,
-                        "lastSuccessAt": item.last_success_at,
-                    },
-                }
-                for item in self.store.connections()
-            ],
+            "connections": connections,
         }
 
     async def publish_connection_snapshot(self) -> None:
@@ -231,6 +243,32 @@ class EdgeService:
                                 previous_version=running.extension_version,
                             )
                             await self.supervisor.health(connection_id)
+                            cleanup = self.store.pending_package_cleanup(connection_id)
+                            if cleanup:
+                                try:
+                                    self.packages.remove(
+                                        cleanup["extensionId"],
+                                        cleanup["version"],
+                                        cleanup["digest"],
+                                    )
+                                except ValueError:
+                                    if (
+                                        not self.store.package(
+                                            cleanup["extensionId"],
+                                            cleanup["version"],
+                                            cleanup["digest"],
+                                        )
+                                        or self.store.package_in_use(
+                                            cleanup["extensionId"],
+                                            cleanup["version"],
+                                            cleanup["digest"],
+                                        )
+                                    ):
+                                        self.store.finish_package_cleanup(connection_id)
+                                except OSError:
+                                    pass
+                                else:
+                                    self.store.finish_package_cleanup(connection_id)
                         except Exception as update_error:
                             await self.supervisor.stop(connection_id)
                             self.supervisor.restore_state(connection_id, snapshot)

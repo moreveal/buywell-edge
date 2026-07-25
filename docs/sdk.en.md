@@ -31,6 +31,18 @@ async def reserve(context, value):
     return {"reserved": True}
 ```
 
+The SDK adds `managedAdapter` metadata to the signed manifest. Once a
+connection is created, Edge sends Buywell the complete manifest and its
+`adapterOperations`. Buywell independently verifies the digest and Ed25519
+signature, then creates account-scoped blocks and fields from the Pydantic
+schemas. The same adapter no longer needs a separately maintained website
+definition. A third-party package is not re-signed by Buywell or made visible
+to other accounts.
+
+When the adapter version differs from the driver version, pass
+`adapter_version`, `adapter_dsl_namespace`, and
+`adapter_definition_revision` to `adapter_driver(...)`.
+
 `SecretStr` and fields with `secret` JSON Schema metadata automatically become
 `configuration.secretFields`. Pydantic models become JSON Schema. Dependencies
 must use exact `name==version` pins. When a library is not on PyPI, an immutable

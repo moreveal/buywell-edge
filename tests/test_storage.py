@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+from buywell_edge.config import EdgeConfig
 from buywell_edge.secrets import SecretVault
+from buywell_edge.service import EdgeService
 from buywell_edge.storage import ConnectionRecord, EdgeStore
 from buywell_edge.updater import ReleaseManager
 
@@ -33,6 +36,82 @@ def test_connection_and_idempotency_are_durable(tmp_path: Path):
     assert not store.begin_idempotent("operation")
     store.finish_idempotent("operation", "success", {"value": 1})
     assert store.idempotency_result("operation") == {"status": "success", "value": {"value": 1}}
+
+
+def test_switch_preserves_health_until_atomic_restart(tmp_path: Path):
+    store = EdgeStore(tmp_path / "edge.sqlite3")
+    current = record()
+    store.upsert_connection(ConnectionRecord(
+        **{
+            **current.__dict__,
+            "health_state": "healthy",
+            "last_success_at": "2026-07-25T12:00:00+00:00",
+        }
+    ))
+    target_manifest = {
+        "extension": {"id": "example.market", "version": "1.1.0"},
+        "package": {"digest": "b" * 64},
+    }
+    target = tmp_path / "target"
+    target.mkdir()
+    store.register_package(target_manifest, target)
+
+    store.switch_connection("connection-1", "1.1.0", "b" * 64)
+
+    switched = store.connections()[0]
+    assert switched.extension_version == "1.1.0"
+    assert switched.health_state == "healthy"
+    assert switched.last_success_at == "2026-07-25T12:00:00+00:00"
+
+
+def test_package_cleanup_is_durable(tmp_path: Path):
+    store = EdgeStore(tmp_path / "edge.sqlite3")
+    store.schedule_package_cleanup(
+        "connection-1",
+        "example.market",
+        "1.0.0",
+        "a" * 64,
+    )
+    assert store.pending_package_cleanup("connection-1") == {
+        "extensionId": "example.market",
+        "version": "1.0.0",
+        "digest": "a" * 64,
+    }
+    store.finish_package_cleanup("connection-1")
+    assert store.pending_package_cleanup("connection-1") is None
+
+
+def test_snapshot_reports_running_version_during_atomic_cutover(tmp_path: Path):
+    service = EdgeService(EdgeConfig(
+        state_directory=tmp_path / "state",
+        install_directory=tmp_path / "install",
+        buywell_url="https://buywell.pro",
+    ))
+    old = record()
+    service.store.upsert_connection(old)
+    old_directory = tmp_path / "old"
+    old_directory.mkdir()
+    service.store.register_package({
+        "extension": {"id": "example.market", "version": "1.0.0"},
+        "package": {"digest": "a" * 64},
+    }, old_directory)
+    new_directory = tmp_path / "new"
+    new_directory.mkdir()
+    service.store.register_package({
+        "extension": {"id": "example.market", "version": "1.1.0"},
+        "package": {"digest": "b" * 64},
+    }, new_directory)
+    service.store.switch_connection("connection-1", "1.1.0", "b" * 64)
+    service.supervisor.processes["connection-1"] = SimpleNamespace(
+        instance_id="instance-old",
+        connection=old,
+    )
+
+    snapshot = service.connection_snapshot()["connections"][0]
+
+    assert snapshot["extensionVersion"] == "1.0.0"
+    assert snapshot["packageDigest"] == "a" * 64
+    assert snapshot["instanceId"] == "instance-old"
 
 
 def test_vault_encrypts_values_at_rest(tmp_path: Path):

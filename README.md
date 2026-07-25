@@ -60,11 +60,17 @@ package digests are only exposed by the optional JSON output:
 ```bash
 buywell-edge connection list
 buywell-edge module list
-buywell-edge module install adapter.ns-gifts@1.0.2
-buywell-edge module switch insignetop 1.0.2
-buywell-edge module remove adapter.ns-gifts 1.0.1
+buywell-edge module install adapter.ns-gifts@1.0.4
+buywell-edge module update insignetop
+buywell-edge module switch insignetop 1.0.4
 buywell-edge connection remove insignetop
 ```
+
+`module update` downloads the newest official package, verifies it, performs
+an atomic connection cutover, and removes the previous package after the new
+process becomes ready. A manual `module switch` retains the last confirmed
+health while the old process drains instead of publishing a false offline
+transition.
 
 Use `connection list --json` or `module list --json` for automation that
 needs exact identifiers.
@@ -103,4 +109,7 @@ async def send_message(context, value: Message):
 
 Builds never execute on Buywell servers. `buywell-edge module build` imports
 the declaration locally, validates it, and writes a deterministic signed
-package. The Buywell control plane only reads the generated manifest.
+package. The Buywell control plane only reads the generated manifest. A signed
+adapter driver supplies its operation schemas through the Edge connection;
+after signature verification, Buywell exposes those blocks only to the
+connected account.

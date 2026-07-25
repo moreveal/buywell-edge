@@ -31,6 +31,17 @@ async def reserve(context, value):
     return {"reserved": True}
 ```
 
+SDK добавляет в подписанный manifest секцию `managedAdapter`. После создания
+подключения Edge передаёт Buywell полный manifest и список
+`adapterOperations`. Buywell заново проверяет digest и Ed25519-подпись, затем
+создаёт для этого аккаунта блоки и поля из Pydantic-схем. Отдельно описывать тот
+же адаптер на сайте не требуется. Пакет другого автора не получает подпись
+Buywell и не становится общим для остальных аккаунтов.
+
+Если версия адаптера должна отличаться от версии драйвера, передайте
+`adapter_version`, `adapter_dsl_namespace` и
+`adapter_definition_revision` в `adapter_driver(...)`.
+
 `SecretStr` и поля с JSON Schema metadata `secret` автоматически попадают в
 `configuration.secretFields`. Pydantic-модели становятся JSON Schema.
 Зависимости указываются только точными pin-версиями `name==version`. Если

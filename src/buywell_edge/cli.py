@@ -486,12 +486,14 @@ def module_install(
 
 @module_app.command("update")
 def module_update(
-    connection_id: str,
-    archive: Path,
+    connection: Annotated[str | None, typer.Argument(help="Connection name or ID")] = None,
+    package: Annotated[str | None, typer.Option("--package", help="Official reference or local package file")] = None,
     trust_key: Annotated[Path | None, typer.Option("--trust-key")] = None,
 ) -> None:
     service = _service()
-    trusted = None
+    selected = _resolve_connection(service, connection)
+    trusted: set[bytes] | None = None
+    temporary_path: Path | None = None
     if trust_key:
         raw = trust_key.read_bytes()
         if raw.startswith(b"-----BEGIN"):
@@ -500,10 +502,96 @@ def module_update(
                 raise typer.BadParameter("Trusted key must be Ed25519")
             raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         trusted = {raw}
-    inspected = service.packages.install(archive, trusted)
-    extension = inspected.manifest["extension"]
-    previous = service.store.switch_connection(connection_id, extension["version"], inspected.digest)
-    console.print(f"[green]Switched[/] {connection_id} from {previous[0]} to {extension['version']}. The daemon will drain and restart the instance.")
+    official = official_package(package) if package else None
+    if package is None:
+        candidates = [
+            item
+            for item in OFFICIAL_PACKAGES.values()
+            if item.reference.partition("@")[0] == selected.extension_id
+            and _version_key(item.reference.partition("@")[2])
+            > _version_key(selected.extension_version)
+        ]
+        if not candidates:
+            raise typer.BadParameter(
+                _message(
+                    service,
+                    f"Для {selected.display_name} нет более новой официальной версии",
+                    f"No newer official version is available for {selected.display_name}",
+                )
+            )
+        official = max(
+            candidates,
+            key=lambda item: _version_key(item.reference.partition("@")[2]),
+        )
+    archive = Path(package) if package else Path()
+    if official:
+        if trust_key:
+            raise typer.BadParameter("--trust-key is only used with local package files")
+        url = f"{service.config.buywell_url}/edge/packages/{official.filename}"
+        try:
+            response = httpx.get(url, follow_redirects=True, timeout=60)
+            response.raise_for_status()
+            verify_archive(official, response.content)
+        except (httpx.HTTPError, ValueError) as error:
+            raise typer.BadParameter(
+                f"Could not download the official package {official.reference}: {error}"
+            ) from error
+        handle, name = tempfile.mkstemp(suffix=".buywell-edge.zip")
+        os.close(handle)
+        temporary_path = Path(name)
+        temporary_path.write_bytes(response.content)
+        archive = temporary_path
+        trusted = {official.public_key}
+    elif not package or not archive.is_file():
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Для стороннего модуля укажите локальный пакет через --package",
+                "Pass a local package with --package for a third-party module",
+            )
+        )
+    try:
+        inspected = service.packages.install(archive, trusted)
+        extension = inspected.manifest["extension"]
+        if extension["id"] != selected.extension_id:
+            raise typer.BadParameter("The update package belongs to another module")
+        if (
+            extension["version"] == selected.extension_version
+            and inspected.digest == selected.package_digest
+        ):
+            console.print(
+                _message(service, "Уже установлена актуальная версия.", "The current version is already installed.")
+            )
+            return
+        previous = service.store.switch_connection(
+            selected.id,
+            extension["version"],
+            inspected.digest,
+        )
+        service.store.schedule_package_cleanup(
+            selected.id,
+            selected.extension_id,
+            previous[0],
+            previous[1],
+        )
+        console.print(
+            _message(
+                service,
+                (
+                    f"[green]{selected.display_name} обновлён[/] с {previous[0]} "
+                    f"до {extension['version']}. Старая версия будет удалена "
+                    "после успешного атомарного перезапуска."
+                ),
+                (
+                    f"[green]Updated {selected.display_name}[/] from {previous[0]} "
+                    f"to {extension['version']}. The previous version will be removed "
+                    "after the atomic restart succeeds."
+                ),
+            )
+        )
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
 
 
 @module_app.command("switch")
