@@ -121,6 +121,60 @@ def _is_secret_schema(schema: dict[str, object]) -> bool:
     )
 
 
+def _resolve_connection(
+    service: EdgeService,
+    reference: str | None,
+) -> ConnectionRecord:
+    connections = service.store.connections()
+    if not connections:
+        raise typer.BadParameter(
+            _message(service, "Подключений пока нет", "There are no connections yet")
+        )
+    if reference:
+        normalized = reference.casefold()
+        connections = [
+            item for item in connections
+            if normalized in {
+                item.id.casefold(),
+                item.display_name.casefold(),
+                item.extension_id.casefold(),
+            } or item.id.casefold().startswith(normalized)
+        ]
+        if not connections:
+            raise typer.BadParameter(
+                _message(
+                    service,
+                    f"Подключение «{reference}» не найдено",
+                    f"Connection “{reference}” was not found",
+                )
+            )
+    if len(connections) == 1:
+        return connections[0]
+    if not console.is_terminal:
+        names = ", ".join(item.display_name for item in connections)
+        raise typer.BadParameter(
+            _message(
+                service,
+                f"Найдено несколько подключений: {names}. Укажите имя.",
+                f"Multiple connections matched: {names}. Specify a name.",
+            )
+        )
+    choices = {
+        str(index): item for index, item in enumerate(connections, start=1)
+    }
+    console.print(_message(service, "Выберите аккаунт:", "Select an account:"))
+    for index, item in choices.items():
+        console.print(
+            f"  {index}. {item.display_name} ({item.extension_id} · {item.health_state})"
+        )
+    selected = Prompt.ask(
+        _message(service, "Номер", "Number"),
+        choices=list(choices),
+        default="1",
+    )
+    return choices[selected]
+
+
 @app.command()
 def version() -> None:
     console.print(f"Buywell Edge {__version__} · Python {platform.python_version()}")
@@ -697,11 +751,11 @@ def connection_add(
             service,
             (
                 f"[green]Аккаунт подключён:[/] {name}.\n"
-                "Edge запустит его автоматически; статус появится в Buywell в течение 30 секунд."
+                "Edge запустит его автоматически; статус появится в Buywell через несколько секунд."
             ),
             (
                 f"[green]Account connected:[/] {name}.\n"
-                "Edge will start it automatically; its status will appear in Buywell within 30 seconds."
+                "Edge will start it automatically; its status will appear in Buywell within a few seconds."
             ),
         )
     )
@@ -709,14 +763,12 @@ def connection_add(
 
 @connection_app.command("login")
 def connection_login(
-    connection_id: str,
+    connection: Annotated[str | None, typer.Argument(help="Account name, module ID, or connection ID")] = None,
     secrets_file: Annotated[Path | None, typer.Option("--secrets-file")] = None,
 ) -> None:
     service = _service()
-    connection = next((item for item in service.store.connections() if item.id == connection_id), None)
-    if not connection:
-        raise typer.BadParameter("Connection was not found")
-    package = service.store.package(connection.extension_id, connection.extension_version, connection.package_digest)
+    selected = _resolve_connection(service, connection)
+    package = service.store.package(selected.extension_id, selected.extension_version, selected.package_digest)
     if not package:
         raise typer.BadParameter("The connection package is not installed")
     manifest, _ = package
@@ -724,39 +776,53 @@ def connection_login(
         field: typer.prompt(field.replace("_", " ").title(), hide_input=True)
         for field in manifest["configuration"].get("secretFields", [])
     }
-    service.vault.put(connection.secret_ref or f"connection:{connection_id}", {key: str(value) for key, value in secrets.items()})
-    service.store.update_health(connection_id, {"state": "offline", "message": None})
+    service.vault.put(selected.secret_ref or f"connection:{selected.id}", {key: str(value) for key, value in secrets.items()})
+    service.store.update_health(selected.id, {"state": "offline", "message": None})
     console.print("[green]Credentials updated locally.[/] Edge will verify the session.")
 
 
 @connection_app.command("status")
-def connection_status(connection_id: str) -> None:
-    connection = next((item for item in _service().store.connections() if item.id == connection_id), None)
-    if not connection:
-        raise typer.BadParameter("Connection was not found")
+def connection_status(
+    connection: Annotated[str | None, typer.Argument(help="Account name, module ID, or connection ID")] = None,
+) -> None:
+    service = _service()
+    selected = _resolve_connection(service, connection)
     console.print_json(data={
-        "id": connection.id,
-        "name": connection.display_name,
-        "extension": connection.extension_id,
-        "version": connection.extension_version,
-        "enabled": connection.enabled,
-        "health": connection.health_state,
-        "message": connection.health_message,
-        "sessionExpiresAt": connection.session_expires_at,
-        "lastSuccessAt": connection.last_success_at,
+        "name": selected.display_name,
+        "extension": selected.extension_id,
+        "version": selected.extension_version,
+        "enabled": selected.enabled,
+        "health": selected.health_state,
+        "message": selected.health_message,
+        "sessionExpiresAt": selected.session_expires_at,
+        "lastSuccessAt": selected.last_success_at,
     })
+    if selected.health_state == "auth_required":
+        console.print(
+            _message(
+                service,
+                f"Повторите вход: `buywell-edge connection login \"{selected.display_name}\"`",
+                f"Sign in again: `buywell-edge connection login \"{selected.display_name}\"`",
+            )
+        )
 
 
 @connection_app.command("enable")
-def connection_enable(connection_id: str) -> None:
-    if not _service().store.set_enabled(connection_id, True):
-        raise typer.BadParameter("Connection was not found")
+def connection_enable(
+    connection: Annotated[str | None, typer.Argument(help="Account name, module ID, or connection ID")] = None,
+) -> None:
+    service = _service()
+    selected = _resolve_connection(service, connection)
+    service.store.set_enabled(selected.id, True)
 
 
 @connection_app.command("disable")
-def connection_disable(connection_id: str) -> None:
-    if not _service().store.set_enabled(connection_id, False):
-        raise typer.BadParameter("Connection was not found")
+def connection_disable(
+    connection: Annotated[str | None, typer.Argument(help="Account name, module ID, or connection ID")] = None,
+) -> None:
+    service = _service()
+    selected = _resolve_connection(service, connection)
+    service.store.set_enabled(selected.id, False)
 
 
 if __name__ == "__main__":

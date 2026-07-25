@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+import time
 from typing import Any
 
 from .config import EdgeConfig
@@ -28,6 +29,35 @@ class EdgeService:
         self.gateway = GatewayClient(config, self.store, self.vault, self.handle_gateway_message)
         self._health_task: asyncio.Task[None] | None = None
         self._job_tasks: set[asyncio.Task[None]] = set()
+
+    def connection_snapshot(self, request_id: str | None = None) -> dict[str, Any]:
+        return {
+            "type": "connection.snapshot",
+            "requestId": request_id,
+            "connections": [
+                {
+                    "connectionId": item.id,
+                    "extensionId": item.extension_id,
+                    "extensionVersion": item.extension_version,
+                    "packageDigest": item.package_digest,
+                    "displayName": item.display_name,
+                    "kind": item.kind,
+                    "configurationState": "ready",
+                    "instanceId": self.supervisor.processes.get(item.id).instance_id if item.id in self.supervisor.processes else None,
+                    "enabled": item.enabled,
+                    "health": {
+                        "state": item.health_state,
+                        "message": item.health_message,
+                        "sessionExpiresAt": item.session_expires_at,
+                        "lastSuccessAt": item.last_success_at,
+                    },
+                }
+                for item in self.store.connections()
+            ],
+        }
+
+    async def publish_connection_snapshot(self) -> None:
+        await self.gateway.send(self.connection_snapshot())
 
     async def handle_extension_event(self, process: Any, message: dict[str, Any]) -> None:
         connection = process.connection
@@ -105,30 +135,7 @@ class EdgeService:
             self.store.acknowledge_event(str(message["eventId"]))
             return None
         if kind == "connection.sync":
-            return {
-                "type": "connection.snapshot",
-                "requestId": message.get("requestId"),
-                "connections": [
-                    {
-                        "connectionId": item.id,
-                        "extensionId": item.extension_id,
-                        "extensionVersion": item.extension_version,
-                        "packageDigest": item.package_digest,
-                        "displayName": item.display_name,
-                        "kind": item.kind,
-                        "configurationState": "ready",
-                        "instanceId": self.supervisor.processes.get(item.id).instance_id if item.id in self.supervisor.processes else None,
-                        "enabled": item.enabled,
-                        "health": {
-                            "state": item.health_state,
-                            "message": item.health_message,
-                            "sessionExpiresAt": item.session_expires_at,
-                            "lastSuccessAt": item.last_success_at,
-                        },
-                    }
-                    for item in self.store.connections()
-                ],
-            }
+            return self.connection_snapshot(message.get("requestId"))
         if kind in (
             "action.request",
             "adapter.operation.request",
@@ -189,18 +196,24 @@ class EdgeService:
             extender.cancel()
 
     async def health_loop(self) -> None:
+        next_health_check = 0.0
         while True:
+            changed = False
+            check_health = time.monotonic() >= next_health_check
             connections = {item.id: item for item in self.store.connections()}
             for connection_id in list(self.supervisor.processes):
                 current = connections.get(connection_id)
                 if not current or not current.enabled:
                     await self.supervisor.stop(connection_id)
+                    changed = True
             for connection_id, current in connections.items():
                 if not current.enabled:
                     continue
                 try:
                     if connection_id not in self.supervisor.processes:
                         await self.supervisor.start(current)
+                        await self.supervisor.health(connection_id)
+                        changed = True
                     running = self.supervisor.processes[connection_id].connection
                     if current.extension_version != running.extension_version or current.package_digest != running.package_digest:
                         # stop() takes the process request lock, so in-flight jobs drain
@@ -226,10 +239,29 @@ class EdgeService:
                             })
                         finally:
                             self.supervisor.discard_snapshot(snapshot)
-                    await self.supervisor.health(connection_id)
+                        changed = True
+                    elif check_health:
+                        before = next(
+                            item for item in self.store.connections()
+                            if item.id == connection_id
+                        )
+                        await self.supervisor.health(connection_id)
+                        after = next(
+                            item for item in self.store.connections()
+                            if item.id == connection_id
+                        )
+                        changed = changed or (
+                            before.health_state != after.health_state
+                            or before.health_message != after.health_message
+                        )
                 except Exception as error:
                     self.store.update_health(connection_id, {"state": "degraded", "message": str(error)[:500]})
-            await asyncio.sleep(30)
+                    changed = True
+            if check_health:
+                next_health_check = time.monotonic() + 30
+            if changed:
+                await self.publish_connection_snapshot()
+            await asyncio.sleep(1)
 
     async def run(self) -> None:
         await self.start_instances()
