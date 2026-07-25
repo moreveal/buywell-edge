@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -32,6 +33,7 @@ from .config import EdgeConfig
 from .official_packages import OFFICIAL_PACKAGES, official_package, verify_archive
 from .service import EdgeService, serve
 from .storage import ConnectionRecord, EdgeStore
+from .system_user import repair_state_ownership, run_as_service_user, should_use_service_user
 from .updater import ReleaseManager
 
 app = typer.Typer(no_args_is_help=True, help="Buywell Edge")
@@ -40,6 +42,13 @@ connection_app = typer.Typer(no_args_is_help=True)
 app.add_typer(module_app, name="module")
 app.add_typer(connection_app, name="connection")
 console = Console()
+
+
+@app.callback()
+def use_service_user_for_state_commands() -> None:
+    config = EdgeConfig.load()
+    if should_use_service_user(sys.argv[1:], config.state_directory):
+        run_as_service_user()
 
 
 def _service() -> EdgeService:
@@ -527,6 +536,7 @@ def edge_update(
         manager.install(archive, resolved_version)
         previous = manager.switch(resolved_version)
         if os.name != "nt":
+            repair_state_ownership(config.state_directory)
             service_file = manager.releases / resolved_version / "share" / "buywell-edge.service"
             shutil.copy2(service_file, "/etc/systemd/system/buywell-edge.service")
             executable = Path("/usr/local/bin/buywell-edge")
