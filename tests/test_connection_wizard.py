@@ -221,5 +221,58 @@ async def test_service_starts_new_connection_and_publishes_healthy_snapshot(
     assert sent[0]["connections"][0]["instanceId"] == "instance-1"
 
 
+@pytest.mark.asyncio
+async def test_service_rechecks_degraded_connection_without_waiting_for_slow_poll(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    edge = service(tmp_path)
+    connection = ConnectionRecord(
+        id="connection-1",
+        extension_id="funpay.cardinal",
+        extension_version="1.3.0",
+        package_digest="a" * 64,
+        display_name="FunPay",
+        kind="module",
+        enabled=True,
+        config={},
+        secret_ref=None,
+        health_state="degraded",
+        health_message="Connecting to FunPay",
+        session_expires_at=None,
+        last_success_at=None,
+    )
+    edge.store.upsert_connection(connection)
+    sent = []
+
+    class Supervisor:
+        processes = {
+            connection.id: SimpleNamespace(
+                connection=connection,
+                instance_id="instance-1",
+            )
+        }
+
+        async def health(self, connection_id):
+            edge.store.update_health(connection_id, {"state": "healthy"})
+
+        async def stop(self, connection_id):
+            raise AssertionError("Healthy process must not be restarted")
+
+    edge.supervisor = Supervisor()
+    edge.gateway = SimpleNamespace(send=lambda payload: _capture(sent, payload))
+
+    async def stop_after_first_iteration(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(asyncio, "sleep", stop_after_first_iteration)
+
+    with pytest.raises(asyncio.CancelledError):
+        await edge.health_loop()
+
+    assert edge.store.connections()[0].health_state == "healthy"
+    assert sent[0]["connections"][0]["health"]["state"] == "healthy"
+
+
 async def _capture(target, payload):
     target.append(payload)

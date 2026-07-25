@@ -245,7 +245,7 @@ class EdgeService:
                         finally:
                             self.supervisor.discard_snapshot(snapshot)
                         changed = True
-                    elif check_health:
+                    elif check_health or current.health_state != "healthy":
                         before = next(
                             item for item in self.store.connections()
                             if item.id == connection_id
