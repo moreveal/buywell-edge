@@ -50,6 +50,7 @@ if [ ! -d "$INSTALL_ROOT/releases/$release_name" ]; then
   mkdir "$INSTALL_ROOT/releases/$release_name"
   tar -xzf "$temporary/edge.tar.gz" -C "$INSTALL_ROOT/releases/$release_name"
 fi
+chmod a+rx "$INSTALL_ROOT" "$INSTALL_ROOT/releases" "$INSTALL_ROOT/releases/$release_name"
 ln -sfn "$INSTALL_ROOT/releases/$release_name" "$INSTALL_ROOT/current"
 ln -sfn "$INSTALL_ROOT/current/bin/buywell-edge" /usr/local/bin/buywell-edge
 
@@ -58,13 +59,19 @@ chown -R buywell-edge:buywell-edge "$STATE_ROOT"
 install -m 0644 "$INSTALL_ROOT/current/share/buywell-edge.service" /etc/systemd/system/buywell-edge.service
 systemctl daemon-reload
 systemctl enable buywell-edge
-if systemctl is-active --quiet buywell-edge; then
-  systemctl restart --no-block buywell-edge
-else
-  systemctl start --no-block buywell-edge
-fi
+systemctl restart --no-block buywell-edge
 
 if [ -n "$PAIR_CODE" ]; then
-  sudo -u buywell-edge "$INSTALL_ROOT/current/bin/buywell-edge" connect "$PAIR_CODE"
+  runuser -u buywell-edge -- "$INSTALL_ROOT/current/bin/buywell-edge" connect "$PAIR_CODE"
 fi
+attempt=0
+while ! systemctl is-active --quiet buywell-edge; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 40 ]; then
+    systemctl status buywell-edge --no-pager >&2 || true
+    echo "Buywell Edge was installed but its service did not start." >&2
+    exit 1
+  fi
+  sleep 0.25
+done
 echo "Buywell Edge is installed. Run: buywell-edge status"

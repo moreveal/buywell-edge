@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -533,6 +534,26 @@ def edge_update(
             executable.symlink_to(config.install_directory / "current" / "bin" / "buywell-edge")
             subprocess.run(["systemctl", "daemon-reload"], check=True)
             subprocess.run(["systemctl", "restart", "--no-block", "buywell-edge"], check=True)
+            for _ in range(40):
+                active = subprocess.run(
+                    ["systemctl", "is-active", "--quiet", "buywell-edge"],
+                    check=False,
+                )
+                if active.returncode == 0:
+                    break
+                time.sleep(0.25)
+            else:
+                subprocess.run(
+                    ["systemctl", "status", "buywell-edge", "--no-pager"],
+                    check=False,
+                )
+                raise RuntimeError(
+                    _message(
+                        service,
+                        "Обновление установлено, но сервис Buywell Edge не запустился.",
+                        "The update was installed, but the Buywell Edge service did not start.",
+                    )
+                )
         manager.prune({resolved_version, *([previous] if previous else [])})
         console.print(
             "[green]"

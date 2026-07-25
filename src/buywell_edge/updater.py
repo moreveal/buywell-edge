@@ -28,6 +28,7 @@ class ReleaseManager:
     def install(self, archive: Path, version: str) -> Path:
         target = self.releases / version
         if target.exists():
+            self._make_release_traversable(target)
             return target
         temporary = Path(tempfile.mkdtemp(prefix=".release-", dir=self.releases))
         try:
@@ -43,11 +44,19 @@ class ReleaseManager:
                     value.extractall(temporary, filter="data")
             else:
                 raise ValueError("Unsupported Edge release archive")
+            self._make_release_traversable(temporary)
             os.replace(temporary, target)
         except Exception:
             shutil.rmtree(temporary, ignore_errors=True)
             raise
         return target
+
+    @staticmethod
+    def _make_release_traversable(release: Path) -> None:
+        """Allow the dedicated service account to execute a root-installed release."""
+        if os.name == "nt":
+            return
+        release.chmod(release.stat().st_mode | 0o055)
 
     def switch(self, version: str) -> str | None:
         target = self.releases / version
