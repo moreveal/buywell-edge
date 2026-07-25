@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from buywell_edge.config import default_state_directory
@@ -20,6 +22,7 @@ def test_rejects_content_outside_pinned_release() -> None:
         verify_archive(package, b"not the official archive")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Linux service account path")
 def test_service_account_uses_service_state_directory(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BUYWELL_EDGE_STATE_DIR", raising=False)
     monkeypatch.setattr("buywell_edge.config.os.geteuid", lambda: 123)
