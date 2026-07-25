@@ -533,7 +533,7 @@ def edge_update(
             executable.unlink(missing_ok=True)
             executable.symlink_to(config.install_directory / "current" / "bin" / "buywell-edge")
             subprocess.run(["systemctl", "daemon-reload"], check=True)
-            subprocess.run(["systemctl", "restart", "--no-block", "buywell-edge"], check=True)
+            subprocess.run(["systemctl", "restart", "buywell-edge"], check=True)
             for _ in range(40):
                 active = subprocess.run(
                     ["systemctl", "is-active", "--quiet", "buywell-edge"],

@@ -59,7 +59,7 @@ chown -R buywell-edge:buywell-edge "$STATE_ROOT"
 install -m 0644 "$INSTALL_ROOT/current/share/buywell-edge.service" /etc/systemd/system/buywell-edge.service
 systemctl daemon-reload
 systemctl enable buywell-edge
-systemctl restart --no-block buywell-edge
+systemctl restart buywell-edge
 
 if [ -n "$PAIR_CODE" ]; then
   runuser -u buywell-edge -- "$INSTALL_ROOT/current/bin/buywell-edge" connect "$PAIR_CODE"
