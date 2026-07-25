@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,6 +35,7 @@ def emulate_root_service_account(monkeypatch: pytest.MonkeyPatch) -> None:
         (["--help"], False),
     ],
 )
+@pytest.mark.skipif(os.name == "nt", reason="Linux service account behavior")
 def test_root_system_commands_select_service_user(
     monkeypatch: pytest.MonkeyPatch,
     arguments: list[str],
@@ -46,6 +48,7 @@ def test_root_system_commands_select_service_user(
     ) is expected
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Linux service account behavior")
 def test_custom_state_directory_stays_with_invoking_user(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -54,6 +57,7 @@ def test_custom_state_directory_stays_with_invoking_user(
     assert not system_user.should_use_service_user(["status"], tmp_path)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Linux service account behavior")
 def test_frozen_cli_reexecutes_without_duplicate_executable_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -80,6 +84,7 @@ def test_frozen_cli_reexecutes_without_duplicate_executable_argument(
     ]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Linux ownership repair")
 def test_repair_state_ownership_includes_locked_package_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
