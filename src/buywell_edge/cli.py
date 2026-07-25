@@ -6,11 +6,13 @@ import json
 import os
 import platform
 import subprocess
+import tempfile
 import uuid
 from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 from pydantic import BaseModel
 from rich.console import Console
@@ -25,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from . import __version__
 from .config import EdgeConfig
+from .official_packages import OFFICIAL_PACKAGES, official_package, verify_archive
 from .service import EdgeService, serve
 from .storage import ConnectionRecord, EdgeStore
 from .updater import ReleaseManager
@@ -243,11 +246,17 @@ def module_build(
 
 @module_app.command("install")
 def module_install(
-    archive: Path,
+    package: Annotated[
+        str,
+        typer.Argument(
+            help="Official module reference (for example funpay.cardinal@1.3.0) or a local package path"
+        ),
+    ],
     trust_key: Annotated[Path | None, typer.Option("--trust-key", help="Trusted Ed25519 public key (PEM or raw bytes)")] = None,
 ) -> None:
     service = _service()
     trusted: set[bytes] | None = None
+    temporary_path: Path | None = None
     if trust_key:
         raw = trust_key.read_bytes()
         if raw.startswith(b"-----BEGIN"):
@@ -256,9 +265,42 @@ def module_install(
                 raise typer.BadParameter("Trusted key must be Ed25519")
             raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         trusted = {raw}
-    inspected = service.packages.install(archive, trusted)
-    extension = inspected.manifest["extension"]
-    console.print(f"[green]Installed[/] {extension['id']} {extension['version']}")
+    archive = Path(package)
+    official = official_package(package)
+    if official:
+        if trust_key:
+            raise typer.BadParameter("--trust-key is only used with local package files")
+        url = f"{service.config.buywell_url}/edge/packages/{official.filename}"
+        try:
+            response = httpx.get(url, follow_redirects=True, timeout=60)
+            response.raise_for_status()
+            verify_archive(official, response.content)
+        except (httpx.HTTPError, ValueError) as error:
+            raise typer.BadParameter(
+                f"Could not download the official package {official.reference}: {error}"
+            ) from error
+        handle, name = tempfile.mkstemp(suffix=".buywell-edge.zip")
+        os.close(handle)
+        temporary_path = Path(name)
+        temporary_path.write_bytes(response.content)
+        archive = temporary_path
+        trusted = {official.public_key}
+    elif not archive.is_file():
+        examples = ", ".join(OFFICIAL_PACKAGES)
+        raise typer.BadParameter(
+            f"Package file was not found: {package}. "
+            f"Use an official reference ({examples}) or an existing local ZIP file."
+        )
+    try:
+        inspected = service.packages.install(archive, trusted)
+        extension = inspected.manifest["extension"]
+        console.print(
+            f"[green]Installed[/] {extension['id']} {extension['version']}\n"
+            "Next: add an account with `buywell-edge connection add --help`."
+        )
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
 
 
 @module_app.command("update")

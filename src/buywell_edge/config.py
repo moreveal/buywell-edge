@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import os
 import platform
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ def default_state_directory() -> Path:
         return Path(override).expanduser().resolve()
     if os.name == "nt":
         return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Buywell" / "Edge"
-    if os.geteuid() == 0:
+    if os.geteuid() == 0 or getpass.getuser() == "buywell-edge":
         return Path("/var/lib/buywell-edge")
     return Path.home() / ".local" / "share" / "buywell-edge"
 
