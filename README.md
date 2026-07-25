@@ -60,9 +60,9 @@ package digests are only exposed by the optional JSON output:
 ```bash
 buywell-edge connection list
 buywell-edge module list
-buywell-edge module install adapter.ns-gifts@1.0.4
+buywell-edge module install adapter.ns-gifts@1.0.6
 buywell-edge module update insignetop
-buywell-edge module switch insignetop 1.0.4
+buywell-edge module switch insignetop 1.0.6
 buywell-edge connection remove insignetop
 ```
 
