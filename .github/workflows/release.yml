@@ -29,7 +29,7 @@ jobs:
       - run: /opt/python/cp312-cp312/bin/python -m pip install uv
       - run: /opt/python/cp312-cp312/bin/uv python install 3.12
       - run: /opt/python/cp312-cp312/bin/uv venv --python 3.12 .venv
-      - run: /opt/python/cp312-cp312/bin/uv pip install --python .venv/bin/python ".[test]" pyinstaller
+      - run: /opt/python/cp312-cp312/bin/uv pip install --python .venv/bin/python ".[test]" pyinstaller pip setuptools wheel
       - run: .venv/bin/python -m pytest
       - run: >-
           .venv/bin/pyinstaller --onedir --name buywell-edge
