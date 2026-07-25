@@ -15,7 +15,7 @@ from pydantic_core import PydanticUndefined
 
 EDGE_PROTOCOL_VERSION = "2.0.0"
 EDGE_MANIFEST_VERSION = 2
-SDK_VERSION = "0.1.10"
+SDK_VERSION = "0.1.11"
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CONTRACT_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
