@@ -1,4 +1,13 @@
-from tools.check_glibc import required_versions
+import importlib.util
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).parents[1] / "tools" / "check_glibc.py"
+SPEC = importlib.util.spec_from_file_location("check_glibc", SCRIPT)
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+required_versions = MODULE.required_versions
 
 
 def test_required_versions_extracts_unique_numeric_versions() -> None:
