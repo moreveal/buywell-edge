@@ -56,13 +56,37 @@ class GatewayClient:
     async def run(self) -> None:
         delay = 1.0
         while not self._stop.is_set():
+            session = asyncio.create_task(self._session())
+            stopping = asyncio.create_task(self._stop.wait())
             try:
-                await self._session()
+                done, _ = await asyncio.wait(
+                    {session, stopping},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if stopping in done:
+                    session.cancel()
+                    await asyncio.gather(session, return_exceptions=True)
+                    return
+                stopping.cancel()
+                await asyncio.gather(stopping, return_exceptions=True)
+                await session
                 delay = 1.0
             except asyncio.CancelledError:
+                session.cancel()
+                stopping.cancel()
+                await asyncio.gather(session, stopping, return_exceptions=True)
                 raise
             except Exception:
-                await asyncio.sleep(delay + random.random())
+                stopping.cancel()
+                await asyncio.gather(stopping, return_exceptions=True)
+                try:
+                    await asyncio.wait_for(
+                        self._stop.wait(),
+                        timeout=delay + random.random(),
+                    )
+                    return
+                except TimeoutError:
+                    pass
                 delay = min(self.config.reconnect_max_seconds, delay * 2)
 
     async def _session(self) -> None:
@@ -126,6 +150,7 @@ class GatewayClient:
             finally:
                 task.cancel()
                 sender.cancel()
+                await asyncio.gather(task, sender, return_exceptions=True)
 
     def stop(self) -> None:
         self._stop.set()

@@ -195,16 +195,21 @@ class ExtensionSupervisor:
         if not item:
             return
         try:
-            await self.request(item, {"type": "shutdown"}, timeout=10)
+            await self.request(item, {"type": "shutdown"}, timeout=2)
         except Exception:
             pass
+        if item.process.stdin:
+            item.process.stdin.close()
         if item.process.returncode is None:
-            item.process.terminate()
             try:
-                await asyncio.wait_for(item.process.wait(), 10)
+                await asyncio.wait_for(item.process.wait(), 2)
             except TimeoutError:
-                item.process.kill()
-                await item.process.wait()
+                item.process.terminate()
+                try:
+                    await asyncio.wait_for(item.process.wait(), 2)
+                except TimeoutError:
+                    item.process.kill()
+                    await item.process.wait()
         for task in (item.reader_task, item.stderr_task):
             if task:
                 task.cancel()

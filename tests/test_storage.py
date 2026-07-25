@@ -51,6 +51,14 @@ def test_release_pointer_rolls_back(tmp_path: Path):
     assert manager.rollback() == "1.0.0"
 
 
+def test_release_pruning_preserves_selected_versions(tmp_path: Path):
+    manager = ReleaseManager(tmp_path)
+    for version in ("1.0.0", "1.1.0", "1.2.0"):
+        (manager.releases / version).mkdir()
+    manager.prune({"1.1.0", "1.2.0"})
+    assert {path.name for path in manager.releases.iterdir()} == {"1.1.0", "1.2.0"}
+
+
 def test_event_outbox_survives_until_acknowledged(tmp_path: Path):
     store = EdgeStore(tmp_path / "edge.sqlite3")
     store.upsert_connection(record())

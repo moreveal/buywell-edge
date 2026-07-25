@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+import platform
 import shutil
 import tempfile
 import tarfile
 import zipfile
 from pathlib import Path
+
+import httpx
 
 
 class ReleaseManager:
@@ -77,3 +81,59 @@ class ReleaseManager:
             raise ValueError("No previous Edge release is available")
         self.switch(previous)
         return previous
+
+    def download(
+        self,
+        version: str = "latest",
+        repository: str = "moreveal/buywell-edge",
+    ) -> tuple[str, Path]:
+        if os.name == "nt":
+            asset = "buywell-edge-windows-x86_64.zip"
+        else:
+            architecture = platform.machine().lower()
+            suffix = "aarch64" if architecture in {"aarch64", "arm64"} else "x86_64"
+            asset = f"buywell-edge-linux-{suffix}.tar.gz"
+        endpoint = (
+            f"https://api.github.com/repos/{repository}/releases/latest"
+            if version == "latest"
+            else f"https://api.github.com/repos/{repository}/releases/tags/v{version.lstrip('v')}"
+        )
+        response = httpx.get(endpoint, follow_redirects=True, timeout=60)
+        response.raise_for_status()
+        release = response.json()
+        resolved_version = str(release["tag_name"]).removeprefix("v")
+        assets = {
+            str(item["name"]): str(item["browser_download_url"])
+            for item in release.get("assets", [])
+        }
+        if asset not in assets or f"{asset}.sha256" not in assets:
+            raise RuntimeError(f"Release {resolved_version} does not contain {asset}")
+        archive_response = httpx.get(assets[asset], follow_redirects=True, timeout=120)
+        archive_response.raise_for_status()
+        checksum_response = httpx.get(
+            assets[f"{asset}.sha256"],
+            follow_redirects=True,
+            timeout=60,
+        )
+        checksum_response.raise_for_status()
+        expected = checksum_response.text.split()[0].lower()
+        actual = hashlib.sha256(archive_response.content).hexdigest()
+        if expected != actual:
+            raise RuntimeError("Buywell Edge release checksum verification failed")
+        suffix = ".zip" if asset.endswith(".zip") else ".tar.gz"
+        handle, filename = tempfile.mkstemp(suffix=suffix)
+        os.close(handle)
+        archive = Path(filename)
+        archive.write_bytes(archive_response.content)
+        return resolved_version, archive
+
+    def prune(self, keep: set[str]) -> None:
+        releases = self.releases.resolve()
+        for path in self.releases.iterdir():
+            if path.name in keep:
+                continue
+            resolved = path.resolve()
+            if releases not in resolved.parents:
+                raise ValueError("Release directory is outside the managed root")
+            if path.is_dir():
+                shutil.rmtree(path)

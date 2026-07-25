@@ -46,8 +46,10 @@ if [ -z "$expected_checksum" ] || [ "$actual_checksum" != "$expected_checksum" ]
   exit 1
 fi
 release_name="$(sha256sum "$temporary/edge.tar.gz" | cut -c1-16)"
-mkdir "$INSTALL_ROOT/releases/$release_name"
-tar -xzf "$temporary/edge.tar.gz" -C "$INSTALL_ROOT/releases/$release_name"
+if [ ! -d "$INSTALL_ROOT/releases/$release_name" ]; then
+  mkdir "$INSTALL_ROOT/releases/$release_name"
+  tar -xzf "$temporary/edge.tar.gz" -C "$INSTALL_ROOT/releases/$release_name"
+fi
 ln -sfn "$INSTALL_ROOT/releases/$release_name" "$INSTALL_ROOT/current"
 ln -sfn "$INSTALL_ROOT/current/bin/buywell-edge" /usr/local/bin/buywell-edge
 
@@ -55,7 +57,12 @@ id buywell-edge >/dev/null 2>&1 || useradd --system --home "$STATE_ROOT" --shell
 chown -R buywell-edge:buywell-edge "$STATE_ROOT"
 install -m 0644 "$INSTALL_ROOT/current/share/buywell-edge.service" /etc/systemd/system/buywell-edge.service
 systemctl daemon-reload
-systemctl enable --now buywell-edge
+systemctl enable buywell-edge
+if systemctl is-active --quiet buywell-edge; then
+  systemctl restart --no-block buywell-edge
+else
+  systemctl start --no-block buywell-edge
+fi
 
 if [ -n "$PAIR_CODE" ]; then
   sudo -u buywell-edge "$INSTALL_ROOT/current/bin/buywell-edge" connect "$PAIR_CODE"

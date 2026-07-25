@@ -5,6 +5,7 @@ import importlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -87,28 +88,12 @@ def _prompt_value(label: str, schema: dict[str, object], default: object) -> obj
 
 
 def _field_label(field: str, schema: dict[str, object], locale: str) -> str:
-    if locale == "en":
-        return str(schema.get("title") or field.replace("_", " ").title())
-    labels = {
-        "api_key": "API-ключ",
-        "api_secret": "Секрет API",
-        "cookies": "Cookie аккаунта",
-        "ddg5": "Cookie __ddg5_",
-        "golden_key": "Golden Key (cookie аккаунта FunPay)",
-        "login": "Логин",
-        "message_poll_interval_seconds": "Интервал проверки сообщений, секунд",
-        "password": "Пароль",
-        "poll_interval_seconds": "Интервал проверки, секунд",
-        "proxy": "Прокси",
-        "request_timeout_seconds": "Тайм-аут запросов, секунд",
-        "sales_window": "Количество проверяемых продаж",
-        "seller_id": "ID продавца",
-        "token": "Токен аккаунта",
-        "totp_secret": "Секрет TOTP",
-        "user_agent": "User-Agent браузера",
-        "user_id": "ID пользователя",
-    }
-    return labels.get(field, field.replace("_", " ").capitalize())
+    labels = schema.get("x-buywell-label")
+    if isinstance(labels, dict):
+        localized = labels.get(locale) or labels.get("en") or labels.get("ru")
+        if isinstance(localized, str) and localized.strip():
+            return localized
+    return str(schema.get("title") or field.replace("_", " ").title())
 
 
 def _is_secret_schema(schema: dict[str, object]) -> bool:
@@ -500,11 +485,64 @@ def logs(lines: Annotated[int, typer.Option("--lines", min=1, max=5000)] = 200) 
 
 
 @app.command("update")
-def edge_update(version: str, archive: Annotated[Path, typer.Option("--archive")]) -> None:
-    manager = ReleaseManager(EdgeConfig.load().install_directory)
-    manager.install(archive, version)
-    previous = manager.switch(version)
-    console.print(f"[green]Edge {version} is active.[/] Previous release: {previous or 'none'}. Restarting the service is safe at any time.")
+def edge_update(
+    version: Annotated[str, typer.Option("--version", help="Release version or latest")] = "latest",
+    archive: Annotated[Path | None, typer.Option("--archive", help="Use a local release archive")] = None,
+) -> None:
+    config = EdgeConfig.load()
+    service = EdgeService(config)
+    if os.name != "nt" and os.geteuid() != 0:
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Запустите `sudo buywell-edge update`",
+                "Run `sudo buywell-edge update`",
+            )
+        )
+    manager = ReleaseManager(config.install_directory)
+    temporary: Path | None = None
+    try:
+        if archive is None:
+            resolved_version, temporary = manager.download(version)
+            archive = temporary
+        else:
+            resolved_version = version.removeprefix("v")
+            if resolved_version == "latest":
+                raise typer.BadParameter("--version is required with --archive")
+        if resolved_version == __version__:
+            console.print(
+                "[green]"
+                + _message(
+                    service,
+                    f"Buywell Edge {resolved_version} уже обновлён.",
+                    f"Buywell Edge {resolved_version} is already current.",
+                )
+                + "[/]"
+            )
+            return
+        manager.install(archive, resolved_version)
+        previous = manager.switch(resolved_version)
+        if os.name != "nt":
+            service_file = manager.releases / resolved_version / "share" / "buywell-edge.service"
+            shutil.copy2(service_file, "/etc/systemd/system/buywell-edge.service")
+            executable = Path("/usr/local/bin/buywell-edge")
+            executable.unlink(missing_ok=True)
+            executable.symlink_to(config.install_directory / "current" / "bin" / "buywell-edge")
+            subprocess.run(["systemctl", "daemon-reload"], check=True)
+            subprocess.run(["systemctl", "restart", "--no-block", "buywell-edge"], check=True)
+        manager.prune({resolved_version, *([previous] if previous else [])})
+        console.print(
+            "[green]"
+            + _message(
+                service,
+                f"Buywell Edge обновлён до {resolved_version}. Сервис перезапускается в фоне; привязка и аккаунты сохранены.",
+                f"Buywell Edge updated to {resolved_version}. The service is restarting in the background; pairing and accounts were preserved.",
+            )
+            + "[/]"
+        )
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
 
 
 @app.command("rollback")

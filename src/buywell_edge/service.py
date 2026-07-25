@@ -273,6 +273,13 @@ class EdgeService:
                 self._health_task.cancel()
             for task in self._job_tasks:
                 task.cancel()
+            await asyncio.gather(
+                *(
+                    [self._health_task] if self._health_task else []
+                ),
+                *self._job_tasks,
+                return_exceptions=True,
+            )
             await self.supervisor.stop_all()
 
     async def shutdown(self) -> None:

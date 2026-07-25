@@ -41,6 +41,17 @@ The executable also hosts the private Python launcher used by extension
 processes and locked dependency installation. Extensions never call a system
 Python, even during install, self-test, update, or rollback.
 
+Update Edge in place without pairing the server again or duplicating its
+connections:
+
+```bash
+sudo buywell-edge update
+```
+
+The command verifies the latest release, switches the existing installation,
+restarts the service without blocking on systemd, and preserves the current
+and previous release for rollback.
+
 ## Development
 
 ```bash

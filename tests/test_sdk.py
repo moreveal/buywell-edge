@@ -25,6 +25,10 @@ def test_manifest_is_generated_from_typed_contracts():
     assert manifest["extension"]["kind"] == "module"
     assert manifest["contracts"]["actions"][0]["id"] == "send-message"
     assert manifest["contracts"]["actions"][0]["input_schema"]["properties"]["text"]["type"] == "string"
+    assert manifest["configuration"]["schema"]["properties"]["prefix"]["x-buywell-label"] == {
+        "ru": "Префикс сообщения",
+        "en": "Message prefix",
+    }
 
 
 def test_adapter_secrets_are_discovered():

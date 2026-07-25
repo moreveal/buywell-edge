@@ -11,6 +11,8 @@ Environment=BUYWELL_EDGE_STATE_DIR=/var/lib/buywell-edge
 ExecStart=/opt/buywell-edge/current/bin/buywell-edge run
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

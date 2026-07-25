@@ -19,27 +19,27 @@ OFFICIAL_PACKAGES = {
     item.reference: item
     for item in (
         OfficialPackage(
-            reference="funpay.cardinal@1.3.0",
-            filename="funpay.cardinal-1.3.0.buywell-edge.zip",
-            archive_sha256="17314616409d3af7d95942db7602158236eb3d73ded85018078a9ae45da38b43",
+            reference="funpay.cardinal@1.3.1",
+            filename="funpay.cardinal-1.3.1.buywell-edge.zip",
+            archive_sha256="3c0002cf5493a0c3bb3eda944503e421ab997954c1dee90d12708ac3f0216597",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
-            reference="ggsel.seller@1.2.3",
-            filename="ggsel.seller-1.2.3.buywell-edge.zip",
-            archive_sha256="49a0071a1a18ebebc63229f34c29e0f4cafad4e6858a429d8758c6ea199f2b9e",
+            reference="ggsel.seller@1.2.4",
+            filename="ggsel.seller-1.2.4.buywell-edge.zip",
+            archive_sha256="30adf63bbe04848aa0372043a538d736abc94975a16c10e80748778cdccbad2c",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
-            reference="playerok.universal@1.0.4",
-            filename="playerok.universal-1.0.4.buywell-edge.zip",
-            archive_sha256="1c72520873636050450b89919927914c6319a574333bfe6ce7fecda806611e64",
+            reference="playerok.universal@1.0.5",
+            filename="playerok.universal-1.0.5.buywell-edge.zip",
+            archive_sha256="0d46de25a0c452c6b45ee2c10680e0ca8f3b4df433b91ab7de0887069650c7e8",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
-            reference="adapter.ns-gifts@1.0.0",
-            filename="adapter.ns-gifts-1.0.0.buywell-edge.zip",
-            archive_sha256="68cf518827cae712ec05fa4d843ac9bcfff8922ade494ab2d84b9406148b025c",
+            reference="adapter.ns-gifts@1.0.1",
+            filename="adapter.ns-gifts-1.0.1.buywell-edge.zip",
+            archive_sha256="2df42b2da5710408965bae6a8f70be799405d5c479600e69d2129b6b743e0320",
             public_key=_PUBLIC_KEY,
         ),
     )

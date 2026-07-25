@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import Any, Generic, Mapping, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 
 EDGE_PROTOCOL_VERSION = "2.0.0"
 EDGE_MANIFEST_VERSION = 2
-SDK_VERSION = "0.1.8"
+SDK_VERSION = "0.1.9"
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CONTRACT_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
@@ -129,6 +131,21 @@ T = TypeVar("T", bound=BaseModel)
 
 def _localized(value: dict[str, str] | LocalizedText) -> LocalizedText:
     return value if isinstance(value, LocalizedText) else LocalizedText.model_validate(value)
+
+
+def configuration_field(
+    *,
+    label: dict[str, str] | LocalizedText,
+    default: Any = PydanticUndefined,
+    secret: bool = False,
+    **kwargs: Any,
+) -> FieldInfo:
+    """Declare module-owned localized presentation for one configuration field."""
+    extra = dict(kwargs.pop("json_schema_extra", {}) or {})
+    extra["x-buywell-label"] = _localized(label).model_dump()
+    if secret:
+        extra["secret"] = True
+    return Field(default=default, json_schema_extra=extra, **kwargs)
 
 
 def _validate_identity(value: str, field_name: str) -> None:

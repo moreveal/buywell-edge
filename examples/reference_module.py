@@ -4,12 +4,15 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict
 
-from buywell_edge_sdk import ActionContext, Health, HealthState, module
+from buywell_edge_sdk import ActionContext, Health, HealthState, configuration_field, module
 
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    prefix: str = "Buywell"
+    prefix: str = configuration_field(
+        label={"ru": "Префикс сообщения", "en": "Message prefix"},
+        default="Buywell",
+    )
 
 
 class Message(BaseModel):
