@@ -8,13 +8,21 @@ redelivery.
 
 ```python
 from pydantic import BaseModel, SecretStr
-from buywell_edge_sdk import adapter_driver
+from buywell_edge_sdk import adapter_driver, contract_field
 
 class Settings(BaseModel):
     api_key: SecretStr
 
 class Request(BaseModel):
-    item_id: str
+    item_id: str = contract_field(
+        label={"ru": "ID товара", "en": "Item ID"},
+        description="Supplier item identifier.",
+    )
+
+class Result(BaseModel):
+    reserved: bool = contract_field(
+        label={"ru": "Зарезервировано", "en": "Reserved"},
+    )
 
 driver = adapter_driver(
     extension_id="example.supplier",
@@ -26,9 +34,16 @@ driver = adapter_driver(
     network_domains=["api.example.com"],
 )
 
-@driver.operation("example.supplier/reserve", "1.0.0", input_model=Request)
+@driver.operation(
+    "example.supplier/reserve",
+    "1.0.0",
+    input_model=Request,
+    output_model=Result,
+    display_name={"ru": "Зарезервировать", "en": "Reserve"},
+    description={"ru": "Зарезервировать товар.", "en": "Reserve an item."},
+)
 async def reserve(context, value):
-    return {"reserved": True}
+    return Result(reserved=True)
 ```
 
 The SDK adds `managedAdapter` metadata to the signed manifest. Once a
@@ -44,7 +59,11 @@ When the adapter version differs from the driver version, pass
 `adapter_definition_revision` to `adapter_driver(...)`.
 
 `SecretStr` and fields with `secret` JSON Schema metadata automatically become
-`configuration.secretFields`. Pydantic models become JSON Schema. Dependencies
+`configuration.secretFields`. Pydantic models become JSON Schema. Use
+`contract_field(...)` for input and output fields: its RU/EN label and
+description are written to the manifest and Buywell UI. An action handler must
+return a mapping or Pydantic model matching `output_model`; the SDK validates
+that before sending the result to Buywell. Dependencies
 must use exact `name==version` pins. When a library is not on PyPI, an immutable
 GitHub archive URL with a full 40-character commit SHA is allowed. `guides` and
 `changelog` declare RU/EN Markdown files; the builder verifies that both files

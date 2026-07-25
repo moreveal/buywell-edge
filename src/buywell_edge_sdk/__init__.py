@@ -6,6 +6,7 @@ from .contracts import (
     HealthState,
     adapter_driver,
     configuration_field,
+    contract_field,
     module,
 )
 from .package import build_package, inspect_package, verify_package
@@ -19,6 +20,7 @@ __all__ = [
     "adapter_driver",
     "build_package",
     "configuration_field",
+    "contract_field",
     "inspect_package",
     "module",
     "verify_package",

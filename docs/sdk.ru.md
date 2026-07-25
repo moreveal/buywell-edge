@@ -8,13 +8,21 @@ outbox или повторная доставка.
 
 ```python
 from pydantic import BaseModel, SecretStr
-from buywell_edge_sdk import adapter_driver
+from buywell_edge_sdk import adapter_driver, contract_field
 
 class Settings(BaseModel):
     api_key: SecretStr
 
 class Request(BaseModel):
-    item_id: str
+    item_id: str = contract_field(
+        label={"ru": "ID товара", "en": "Item ID"},
+        description="Supplier item identifier.",
+    )
+
+class Result(BaseModel):
+    reserved: bool = contract_field(
+        label={"ru": "Зарезервировано", "en": "Reserved"},
+    )
 
 driver = adapter_driver(
     extension_id="example.supplier",
@@ -26,9 +34,16 @@ driver = adapter_driver(
     network_domains=["api.example.com"],
 )
 
-@driver.operation("example.supplier/reserve", "1.0.0", input_model=Request)
+@driver.operation(
+    "example.supplier/reserve",
+    "1.0.0",
+    input_model=Request,
+    output_model=Result,
+    display_name={"ru": "Зарезервировать", "en": "Reserve"},
+    description={"ru": "Зарезервировать товар.", "en": "Reserve an item."},
+)
 async def reserve(context, value):
-    return {"reserved": True}
+    return Result(reserved=True)
 ```
 
 SDK добавляет в подписанный manifest секцию `managedAdapter`. После создания
@@ -43,7 +58,11 @@ Buywell и не становится общим для остальных акк
 `adapter_definition_revision` в `adapter_driver(...)`.
 
 `SecretStr` и поля с JSON Schema metadata `secret` автоматически попадают в
-`configuration.secretFields`. Pydantic-модели становятся JSON Schema.
+`configuration.secretFields`. Pydantic-модели становятся JSON Schema. Для
+полей inputs/outputs используйте `contract_field(...)`: его RU/EN label и
+description попадут в manifest и интерфейс Buywell. Handler действия должен
+вернуть mapping или Pydantic-модель, соответствующую `output_model`; SDK
+проверяет это до отправки результата в Buywell.
 Зависимости указываются только точными pin-версиями `name==version`. Если
 библиотеки нет в PyPI, разрешён immutable GitHub archive URL с полным
 40-символьным commit SHA. В `guides` и `changelog` указываются RU/EN Markdown

@@ -15,7 +15,7 @@ from pydantic_core import PydanticUndefined
 
 EDGE_PROTOCOL_VERSION = "2.0.0"
 EDGE_MANIFEST_VERSION = 2
-SDK_VERSION = "0.1.20"
+SDK_VERSION = "0.1.21"
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CONTRACT_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
@@ -148,6 +148,18 @@ def configuration_field(
     return Field(default=default, json_schema_extra=extra, **kwargs)
 
 
+def contract_field(
+    *,
+    label: dict[str, str] | LocalizedText,
+    default: Any = PydanticUndefined,
+    **kwargs: Any,
+) -> FieldInfo:
+    """Declare localized presentation for operation input and output fields."""
+    extra = dict(kwargs.pop("json_schema_extra", {}) or {})
+    extra["x-buywell-label"] = _localized(label).model_dump()
+    return Field(default=default, json_schema_extra=extra, **kwargs)
+
+
 def _validate_identity(value: str, field_name: str) -> None:
     pattern = SEMVER if field_name == "version" else CONTRACT_IDENTIFIER if field_name in ("event id", "action id", "operation id") else IDENTIFIER
     if not pattern.fullmatch(value):
@@ -265,7 +277,7 @@ class ExtensionDefinition:
                 input_schema=_schema(input_model),
                 output_schema=_schema(output_model),
             ))
-            self.handlers[f"action:{action_id}@{version}"] = _typed_handler(handler, input_model)
+            self.handlers[f"action:{action_id}@{version}"] = _typed_handler(handler, input_model, output_model)
             return handler
 
         return decorate
@@ -296,7 +308,7 @@ class ExtensionDefinition:
                 output_schema=_schema(output_model),
                 idempotency=idempotency,
             ))
-            self.handlers[f"operation:{operation_id}@{version}"] = _typed_handler(handler, input_model)
+            self.handlers[f"operation:{operation_id}@{version}"] = _typed_handler(handler, input_model, output_model)
             return handler
 
         return decorate
@@ -396,17 +408,25 @@ class ExtensionDefinition:
         return manifest
 
 
-def _typed_handler(handler: Handler, model: type[T] | None) -> Handler:
+def _typed_handler(
+    handler: Handler,
+    input_model: type[T] | None,
+    output_model: type[BaseModel] | None,
+) -> Handler:
     async def wrapped(context: ActionContext, raw: dict[str, Any]) -> dict[str, Any]:
-        value: Any = model.model_validate(raw) if model else raw
+        value: Any = input_model.model_validate(raw) if input_model else raw
         result = handler(context, value)
         if inspect.isawaitable(result):
             result = await result
         if isinstance(result, BaseModel):
-            return result.model_dump(mode="json")
-        if not isinstance(result, dict):
+            payload = result.model_dump(mode="json")
+        elif isinstance(result, dict):
+            payload = result
+        else:
             raise TypeError("Extension handlers must return a mapping or Pydantic model")
-        return result
+        if output_model is None:
+            return payload
+        return output_model.model_validate(payload).model_dump(mode="json")
 
     return wrapped
 

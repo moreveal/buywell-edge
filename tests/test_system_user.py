@@ -26,7 +26,7 @@ def emulate_root_service_account(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         (["status"], True),
         (["connect", "BW-ABCDEFGH"], True),
-        (["module", "install", "adapter.ns-gifts@1.0.4"], True),
+        (["module", "install", "adapter.ns-gifts@1.0.5"], True),
         (["connection", "add", "adapter.ns-gifts"], True),
         (["module", "build", "package:definition"], False),
         (["update"], False),

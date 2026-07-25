@@ -10,7 +10,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from buywell_edge_sdk.package import build_package, verify_package
-from buywell_edge_sdk.contracts import module
+from buywell_edge_sdk.contracts import AdapterContext, adapter_driver, module
+from buywell_edge_sdk.runtime import ExtensionRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,13 @@ def test_adapter_secrets_are_discovered():
     manifest = extension.manifest()
     assert manifest["executionPolicy"] == "edge_required"
     assert manifest["configuration"]["secretFields"] == ["api_key"]
+    operation = manifest["contracts"]["adapterOperations"][0]
+    assert operation["description"]["en"] == "Reserve supplier stock."
+    assert operation["input_schema"]["properties"]["sku"]["x-buywell-label"] == {
+        "ru": "Артикул",
+        "en": "SKU",
+    }
+    assert operation["output_schema"]["properties"]["reservation_id"]["description"] == "Supplier reservation identifier."
     assert manifest["managedAdapter"] == {
         "moduleVersion": manifest["extension"]["version"],
         "dslNamespace": "example_supplier",
@@ -46,6 +54,50 @@ def test_adapter_secrets_are_discovered():
         manifest,
         json.loads((ROOT / "protocol" / "manifest-v2.schema.json").read_text("utf-8")),
     )
+
+
+@pytest.mark.asyncio
+async def test_runtime_validates_declared_operation_outputs(tmp_path: Path):
+    from pydantic import BaseModel, ConfigDict
+
+    class Output(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: str
+
+    extension = adapter_driver(
+        extension_id="example.validation",
+        version="1.0.0",
+        display_name={"ru": "Validation", "en": "Validation"},
+        publisher="Buywell",
+        entrypoint="validation:extension",
+    )
+
+    @extension.operation("check", "1.0.0", output_model=Output)
+    async def check(_context: AdapterContext, _value: dict) -> dict:
+        return {"value": {"nested": True}}
+
+    runtime = ExtensionRuntime(extension)
+    ready = await runtime.handle({
+        "type": "initialize",
+        "requestId": "init",
+        "connectionId": "connection",
+        "instanceId": "instance",
+        "stateDirectory": str(tmp_path),
+    })
+    assert ready["type"] == "ready"
+    result = await runtime.handle({
+        "type": "adapter.operation",
+        "requestId": "job",
+        "jobId": "job",
+        "idempotencyKey": "idem",
+        "contractId": "check",
+        "contractVersion": "1.0.0",
+        "inputs": {},
+    })
+    assert result["type"] == "job.result"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "EXTENSION_ERROR"
+    assert "Input should be a valid string" in result["error"]["message"]
 
 
 def test_package_is_deterministic_and_signed(tmp_path: Path):
