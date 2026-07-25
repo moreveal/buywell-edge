@@ -52,6 +52,23 @@ The command verifies the latest release, switches the existing installation,
 restarts the service without blocking on systemd, and preserves the current
 and previous release for rollback.
 
+## Connections and modules
+
+Common operations use connection names and module versions; internal IDs and
+package digests are only exposed by the optional JSON output:
+
+```bash
+buywell-edge connection list
+buywell-edge module list
+buywell-edge module install adapter.ns-gifts@1.0.2
+buywell-edge module switch insignetop 1.0.2
+buywell-edge module remove adapter.ns-gifts 1.0.1
+buywell-edge connection remove insignetop
+```
+
+Use `connection list --json` or `module list --json` for automation that
+needs exact identifiers.
+
 ## Development
 
 ```bash

@@ -356,6 +356,45 @@ def tui() -> None:
             return
 
 
+@module_app.command("list")
+def module_list(
+    json_output: Annotated[bool, typer.Option("--json", help="Machine-readable output with exact digests")] = False,
+) -> None:
+    service = _service()
+    locale = _locale(service)
+    connections = service.store.connections()
+    rows = [
+        {
+            "extension": str(manifest["extension"]["id"]),
+            "name": _localized_name(manifest, locale),
+            "version": str(manifest["extension"]["version"]),
+            "digest": str(manifest["package"]["digest"]),
+            "connections": [
+                item.display_name
+                for item in connections
+                if item.extension_id == manifest["extension"]["id"]
+                and item.extension_version == manifest["extension"]["version"]
+                and item.package_digest == manifest["package"]["digest"]
+            ],
+        }
+        for manifest, _ in service.store.installed_packages()
+    ]
+    if json_output:
+        console.print_json(data=rows)
+        return
+    table = Table(title=_message(service, "Установленные модули", "Installed modules"))
+    for heading in (
+        _message(service, "Модуль", "Module"),
+        _message(service, "Название", "Name"),
+        _message(service, "Версия", "Version"),
+        _message(service, "Используется", "Used by"),
+    ):
+        table.add_column(heading)
+    for row in rows:
+        table.add_row(row["extension"], row["name"], row["version"], ", ".join(row["connections"]) or "—")
+    console.print(table)
+
+
 @module_app.command("build")
 def module_build(
     entrypoint: Annotated[str, typer.Argument(help="Python module:object declaration")],
@@ -468,9 +507,44 @@ def module_update(
 
 
 @module_app.command("switch")
-def module_switch(connection_id: str, version: str, digest: Annotated[str, typer.Option("--digest")]) -> None:
-    previous = _service().store.switch_connection(connection_id, version, digest)
-    console.print(f"[green]Switch scheduled.[/] Previous version: {previous[0]}")
+def module_switch(
+    connection: Annotated[str, typer.Argument(help="Connection name or ID")],
+    version: Annotated[str, typer.Argument(help="Installed module version")],
+    digest: Annotated[str | None, typer.Option("--digest", help="Exact digest, only needed when multiple builds are installed")] = None,
+) -> None:
+    service = _service()
+    selected = _resolve_connection(service, connection)
+    candidates = [
+        manifest["package"]["digest"]
+        for manifest, _ in service.store.installed_packages()
+        if manifest["extension"]["id"] == selected.extension_id
+        and manifest["extension"]["version"] == version
+        and (digest is None or manifest["package"]["digest"] == digest)
+    ]
+    if not candidates:
+        raise typer.BadParameter(
+            _message(
+                service,
+                f"Модуль {selected.extension_id} версии {version} не установлен",
+                f"{selected.extension_id} version {version} is not installed",
+            )
+        )
+    if len(candidates) > 1:
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Установлено несколько сборок этой версии; укажите --digest",
+                "Multiple builds of this version are installed; specify --digest",
+            )
+        )
+    previous = service.store.switch_connection(selected.id, version, str(candidates[0]))
+    console.print(
+        _message(
+            service,
+            f"[green]Подключение {selected.display_name} переключено[/] с {previous[0]} на {version}.",
+            f"[green]Switched {selected.display_name}[/] from {previous[0]} to {version}.",
+        )
+    )
 
 
 @module_app.command("rollback")
@@ -480,9 +554,42 @@ def module_rollback(connection_id: str) -> None:
 
 
 @module_app.command("remove")
-def module_remove(extension_id: str, version: str, digest: Annotated[str, typer.Option("--digest")]) -> None:
-    _service().packages.remove(extension_id, version, digest)
-    console.print(f"[green]Removed[/] {extension_id} {version}")
+def module_remove(
+    extension_id: str,
+    version: str,
+    digest: Annotated[str | None, typer.Option("--digest", help="Exact digest, only needed when multiple builds are installed")] = None,
+) -> None:
+    service = _service()
+    candidates = [
+        str(manifest["package"]["digest"])
+        for manifest, _ in service.store.installed_packages()
+        if manifest["extension"]["id"] == extension_id
+        and manifest["extension"]["version"] == version
+        and (digest is None or manifest["package"]["digest"] == digest)
+    ]
+    if not candidates:
+        raise typer.BadParameter(
+            _message(service, "Такая версия модуля не установлена", "This module version is not installed")
+        )
+    if len(candidates) > 1:
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Установлено несколько сборок этой версии; укажите --digest",
+                "Multiple builds of this version are installed; specify --digest",
+            )
+        )
+    try:
+        service.packages.remove(extension_id, version, candidates[0])
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        _message(
+            service,
+            f"[green]Удалён модуль[/] {extension_id} {version}",
+            f"[green]Removed module[/] {extension_id} {version}",
+        )
+    )
 
 
 @app.command("logs")
@@ -675,6 +782,49 @@ def migrate_run(
         f"secrets: {', '.join(sorted(imported_secrets)) or 'none'}. "
         "No values were sent to Buywell."
     )
+
+
+@connection_app.command("list")
+def connection_list(
+    json_output: Annotated[bool, typer.Option("--json", help="Machine-readable output with IDs and digests")] = False,
+) -> None:
+    service = _service()
+    connections = service.store.connections()
+    if json_output:
+        console.print_json(data=[
+            {
+                "id": item.id,
+                "name": item.display_name,
+                "extension": item.extension_id,
+                "version": item.extension_version,
+                "digest": item.package_digest,
+                "enabled": item.enabled,
+                "health": item.health_state,
+                "message": item.health_message,
+                "lastSuccessAt": item.last_success_at,
+            }
+            for item in connections
+        ])
+        return
+    table = Table(title=_message(service, "Подключения", "Connections"))
+    for heading in (
+        _message(service, "Подключение", "Connection"),
+        _message(service, "Модуль", "Module"),
+        _message(service, "Версия", "Version"),
+        _message(service, "Включено", "Enabled"),
+        _message(service, "Состояние", "Health"),
+    ):
+        table.add_column(heading)
+    for item in connections:
+        color = "green" if item.health_state == "healthy" else "yellow" if item.health_state in ("degraded", "auth_required") else "dim"
+        table.add_row(
+            item.display_name,
+            item.extension_id,
+            item.extension_version,
+            _message(service, "да", "yes") if item.enabled else _message(service, "нет", "no"),
+            f"[{color}]{item.health_state}[/]",
+        )
+    console.print(table)
 
 
 @connection_app.command("add")
@@ -955,6 +1105,36 @@ def connection_disable(
     service = _service()
     selected = _resolve_connection(service, connection)
     service.store.set_enabled(selected.id, False)
+
+
+@connection_app.command("remove")
+def connection_remove(
+    reference: Annotated[str, typer.Argument(help="Connection name or ID")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation")] = False,
+) -> None:
+    service = _service()
+    connection = _resolve_connection(service, reference)
+    if not yes and not typer.confirm(
+        _message(
+            service,
+            f"Удалить подключение «{connection.display_name}» и его локальные секреты?",
+            f"Remove connection “{connection.display_name}” and its local secrets?",
+        )
+    ):
+        raise typer.Abort()
+    if not service.store.remove_connection(connection.id):
+        raise typer.BadParameter(
+            _message(service, "Подключение уже удалено", "The connection has already been removed")
+        )
+    if connection.secret_ref:
+        service.vault.delete(connection.secret_ref)
+    console.print(
+        _message(
+            service,
+            f"[green]Удалено подключение[/] {connection.display_name}",
+            f"[green]Removed connection[/] {connection.display_name}",
+        )
+    )
 
 
 if __name__ == "__main__":

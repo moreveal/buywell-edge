@@ -1,4 +1,5 @@
 import asyncio
+import copy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -166,6 +167,81 @@ def test_status_needs_no_hidden_id_for_single_connection(
     assert result.exit_code == 0, result.output
     assert '"name": "Irohazaka"' in result.output
     assert '"message": "Connecting to FunPay"' in result.output
+
+
+def test_lists_and_switches_modules_without_internal_identifiers(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    edge = service(tmp_path)
+    newer = copy.deepcopy(manifest())
+    newer["extension"]["version"] = "1.4.0"
+    newer["package"]["digest"] = "b" * 64
+    package = tmp_path / "package-new"
+    package.mkdir()
+    edge.store.register_package(newer, package)
+    edge.store.upsert_connection(ConnectionRecord(
+        id="hidden-connection-id",
+        extension_id="funpay.cardinal",
+        extension_version="1.3.0",
+        package_digest="a" * 64,
+        display_name="Irohazaka",
+        kind="module",
+        enabled=True,
+        config={},
+        secret_ref=None,
+        health_state="healthy",
+        health_message=None,
+        session_expires_at=None,
+        last_success_at=None,
+    ))
+    monkeypatch.setattr("buywell_edge.cli._service", lambda: edge)
+    runner = CliRunner()
+
+    connections = runner.invoke(app, ["connection", "list"])
+    modules = runner.invoke(app, ["module", "list"])
+    switched = runner.invoke(app, ["module", "switch", "Irohazaka", "1.4.0"])
+
+    assert connections.exit_code == 0, connections.output
+    assert "Irohazaka" in connections.output
+    assert "funpay.cardinal" in connections.output
+    assert modules.exit_code == 0, modules.output
+    assert "1.3.0" in modules.output
+    assert "1.4.0" in modules.output
+    assert switched.exit_code == 0, switched.output
+    selected = edge.store.connections()[0]
+    assert selected.extension_version == "1.4.0"
+    assert selected.package_digest == "b" * 64
+
+
+def test_removes_connection_and_its_secrets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    edge = service(tmp_path)
+    edge.store.upsert_connection(ConnectionRecord(
+        id="connection-1",
+        extension_id="funpay.cardinal",
+        extension_version="1.3.0",
+        package_digest="a" * 64,
+        display_name="Irohazaka",
+        kind="module",
+        enabled=True,
+        config={},
+        secret_ref="connection:1",
+        health_state="offline",
+        health_message=None,
+        session_expires_at=None,
+        last_success_at=None,
+    ))
+    edge.vault.put("connection:1", {"golden_key": "secret"})
+    monkeypatch.setattr("buywell_edge.cli._service", lambda: edge)
+
+    result = CliRunner().invoke(app, ["connection", "remove", "Irohazaka", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert edge.store.connections() == []
+    assert edge.vault.get("connection:1") == {}
 
 
 @pytest.mark.asyncio

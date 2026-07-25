@@ -178,6 +178,11 @@ class EdgeStore:
             )
             return cursor.rowcount == 1
 
+    def remove_connection(self, connection_id: str) -> bool:
+        with self._lock, self.connect() as database:
+            cursor = database.execute("DELETE FROM connections WHERE id=?", (connection_id,))
+            return cursor.rowcount == 1
+
     def switch_connection(self, connection_id: str, version: str, digest: str) -> tuple[str, str]:
         with self._lock, self.connect() as database:
             connection = database.execute(
