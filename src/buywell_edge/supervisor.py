@@ -34,6 +34,14 @@ def job_idempotency_key(job: dict[str, Any]) -> str:
     return str(job.get("idempotencyKey") or job.get("requestId") or job["jobId"])
 
 
+def extension_request_id(payload: dict[str, Any]) -> str:
+    candidate = str(payload.get("requestId") or "")
+    try:
+        return str(uuid.UUID(candidate))
+    except ValueError:
+        return str(uuid.uuid4())
+
+
 class ExtensionSupervisor:
     def __init__(
         self,
@@ -106,7 +114,7 @@ class ExtensionSupervisor:
             raise RuntimeError("Extension stdio is unavailable")
         async with item.lock:
             item.request_sequence += 1
-            request_id = f"{item.instance_id}:{item.request_sequence}"
+            request_id = extension_request_id(payload)
             wire = {**payload, "requestId": request_id}
             future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
             assert item.pending is not None

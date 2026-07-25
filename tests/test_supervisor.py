@@ -1,4 +1,6 @@
-from buywell_edge.supervisor import job_idempotency_key
+from uuid import UUID
+
+from buywell_edge.supervisor import extension_request_id, job_idempotency_key
 
 
 def test_action_job_uses_declared_idempotency_key() -> None:
@@ -19,3 +21,12 @@ def test_binding_catalog_job_uses_request_id() -> None:
 
 def test_legacy_job_falls_back_to_durable_job_id() -> None:
     assert job_idempotency_key({"jobId": "job-1"}) == "job-1"
+
+
+def test_extension_request_preserves_contract_uuid() -> None:
+    request_id = "438974d6-1282-422c-a998-4a3dda4e69f1"
+    assert extension_request_id({"requestId": request_id}) == request_id
+
+
+def test_extension_request_replaces_internal_non_uuid_identifier() -> None:
+    assert str(UUID(extension_request_id({"requestId": "instance:1"})))
