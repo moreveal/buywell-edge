@@ -8,6 +8,18 @@ import pytest
 from buywell_edge import system_user
 
 
+def emulate_root_service_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system_user.os, "name", "posix")
+    monkeypatch.setattr(system_user.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        system_user,
+        "pwd",
+        SimpleNamespace(
+            getpwnam=lambda _: SimpleNamespace(pw_uid=123, pw_gid=456),
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("arguments", "expected"),
     [
@@ -27,8 +39,7 @@ def test_root_system_commands_select_service_user(
     arguments: list[str],
     expected: bool,
 ) -> None:
-    monkeypatch.setattr(system_user.os, "name", "posix")
-    monkeypatch.setattr(system_user.os, "geteuid", lambda: 0)
+    emulate_root_service_account(monkeypatch)
     assert system_user.should_use_service_user(
         arguments,
         Path("/var/lib/buywell-edge"),
@@ -39,8 +50,7 @@ def test_custom_state_directory_stays_with_invoking_user(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(system_user.os, "name", "posix")
-    monkeypatch.setattr(system_user.os, "geteuid", lambda: 0)
+    emulate_root_service_account(monkeypatch)
     assert not system_user.should_use_service_user(["status"], tmp_path)
 
 
@@ -48,11 +58,7 @@ def test_frozen_cli_reexecutes_without_duplicate_executable_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     command: list[str] = []
-    monkeypatch.setattr(
-        system_user.pwd,
-        "getpwnam",
-        lambda _: SimpleNamespace(pw_uid=123, pw_gid=456),
-    )
+    emulate_root_service_account(monkeypatch)
     monkeypatch.setattr(system_user.sys, "frozen", True, raising=False)
     monkeypatch.setattr(system_user.sys, "executable", "/opt/buywell-edge/bin/buywell-edge")
     monkeypatch.setattr(
@@ -83,13 +89,7 @@ def test_repair_state_ownership_includes_locked_package_directories(
     dependencies.mkdir(parents=True)
     package.chmod(0o700)
     changed: list[Path] = []
-    monkeypatch.setattr(system_user.os, "name", "posix")
-    monkeypatch.setattr(system_user.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(
-        system_user.pwd,
-        "getpwnam",
-        lambda _: SimpleNamespace(pw_uid=123, pw_gid=456),
-    )
+    emulate_root_service_account(monkeypatch)
     monkeypatch.setattr(
         system_user.os,
         "chown",
