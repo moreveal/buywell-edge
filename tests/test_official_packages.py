@@ -29,3 +29,22 @@ def test_service_account_uses_service_state_directory(monkeypatch: pytest.Monkey
     monkeypatch.setattr("buywell_edge.config.getpass.getuser", lambda: "buywell-edge")
 
     assert default_state_directory().as_posix() == "/var/lib/buywell-edge"
+
+
+def test_pairing_locale_is_preferred_over_host_locale(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from buywell_edge.cli import _locale
+    from buywell_edge.config import EdgeConfig
+    from buywell_edge.service import EdgeService
+
+    service = EdgeService(EdgeConfig(
+        state_directory=tmp_path / "state",
+        install_directory=tmp_path / "install",
+        buywell_url="https://buywell.pro",
+    ))
+    service.store.set_metadata("locale", "ru")
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+
+    assert _locale(service) == "ru"

@@ -190,11 +190,19 @@ class EdgeService:
 
     async def health_loop(self) -> None:
         while True:
+            connections = {item.id: item for item in self.store.connections()}
             for connection_id in list(self.supervisor.processes):
+                current = connections.get(connection_id)
+                if not current or not current.enabled:
+                    await self.supervisor.stop(connection_id)
+            for connection_id, current in connections.items():
+                if not current.enabled:
+                    continue
                 try:
-                    current = next((item for item in self.store.connections() if item.id == connection_id), None)
+                    if connection_id not in self.supervisor.processes:
+                        await self.supervisor.start(current)
                     running = self.supervisor.processes[connection_id].connection
-                    if current and (current.extension_version != running.extension_version or current.package_digest != running.package_digest):
+                    if current.extension_version != running.extension_version or current.package_digest != running.package_digest:
                         # stop() takes the process request lock, so in-flight jobs drain
                         # before the migration snapshot is taken.
                         await self.supervisor.stop(connection_id)

@@ -44,6 +44,83 @@ def _service() -> EdgeService:
     return EdgeService(EdgeConfig.load())
 
 
+def _locale(service: EdgeService) -> str:
+    paired = service.store.metadata("locale")
+    if paired in {"ru", "en"}:
+        return paired
+    return "ru" if os.environ.get("LANG", "").lower().startswith("ru") else "en"
+
+
+def _message(service: EdgeService, ru: str, en: str) -> str:
+    return en if _locale(service) == "en" else ru
+
+
+def _version_key(value: str) -> tuple[int, int, int, str]:
+    base, _, suffix = value.partition("-")
+    parts = base.split(".")
+    numbers = tuple(int(part) if part.isdigit() else 0 for part in parts[:3])
+    return (*numbers, suffix or "\uffff")  # type: ignore[return-value]
+
+
+def _localized_name(manifest: dict[str, object], locale: str) -> str:
+    extension = manifest["extension"]
+    assert isinstance(extension, dict)
+    names = extension.get("displayName")
+    if isinstance(names, dict):
+        value = names.get(locale) or names.get("en") or names.get("ru")
+        if isinstance(value, str):
+            return value
+    return str(extension["id"])
+
+
+def _prompt_value(label: str, schema: dict[str, object], default: object) -> object:
+    rendered_default = None if default is None else str(default)
+    value = Prompt.ask(label, default=rendered_default)
+    value_type = schema.get("type")
+    if value_type == "boolean":
+        return value.strip().lower() in {"1", "true", "yes", "y", "да"}
+    if value_type == "integer":
+        return int(value)
+    if value_type == "number":
+        return float(value)
+    return value
+
+
+def _field_label(field: str, schema: dict[str, object], locale: str) -> str:
+    if locale == "en":
+        return str(schema.get("title") or field.replace("_", " ").title())
+    labels = {
+        "api_key": "API-ключ",
+        "api_secret": "Секрет API",
+        "cookies": "Cookie аккаунта",
+        "ddg5": "Cookie __ddg5_",
+        "golden_key": "Golden Key (cookie аккаунта FunPay)",
+        "login": "Логин",
+        "message_poll_interval_seconds": "Интервал проверки сообщений, секунд",
+        "password": "Пароль",
+        "poll_interval_seconds": "Интервал проверки, секунд",
+        "proxy": "Прокси",
+        "request_timeout_seconds": "Тайм-аут запросов, секунд",
+        "sales_window": "Количество проверяемых продаж",
+        "seller_id": "ID продавца",
+        "token": "Токен аккаунта",
+        "totp_secret": "Секрет TOTP",
+        "user_agent": "User-Agent браузера",
+        "user_id": "ID пользователя",
+    }
+    return labels.get(field, field.replace("_", " ").capitalize())
+
+
+def _is_secret_schema(schema: dict[str, object]) -> bool:
+    if schema.get("writeOnly") is True:
+        return True
+    alternatives = schema.get("anyOf")
+    return isinstance(alternatives, list) and any(
+        isinstance(item, dict) and item.get("writeOnly") is True
+        for item in alternatives
+    )
+
+
 @app.command()
 def version() -> None:
     console.print(f"Buywell Edge {__version__} · Python {platform.python_version()}")
@@ -295,8 +372,21 @@ def module_install(
         inspected = service.packages.install(archive, trusted)
         extension = inspected.manifest["extension"]
         console.print(
-            f"[green]Installed[/] {extension['id']} {extension['version']}\n"
-            "Next: add an account with `buywell-edge connection add --help`."
+            _message(
+                service,
+                (
+                    f"[green]Установлен модуль[/] {_localized_name(inspected.manifest, 'ru')} "
+                    f"{extension['version']}.\n"
+                    f"Дальше запустите локальный мастер: "
+                    f"`buywell-edge connection add {extension['id']}`"
+                ),
+                (
+                    f"[green]Installed[/] {_localized_name(inspected.manifest, 'en')} "
+                    f"{extension['version']}.\n"
+                    f"Next, run the local setup wizard: "
+                    f"`buywell-edge connection add {extension['id']}`"
+                ),
+            )
         )
     finally:
         if temporary_path:
@@ -463,24 +553,127 @@ def migrate_run(
 
 @connection_app.command("add")
 def connection_add(
-    extension_id: str,
-    version: str,
-    digest: Annotated[str, typer.Option("--digest")],
-    name: Annotated[str, typer.Option("--name")],
-    kind: Annotated[str, typer.Option("--kind")] = "module",
+    extension_id: Annotated[str | None, typer.Argument(help="Installed module ID")] = None,
+    version: Annotated[str | None, typer.Argument(help="Installed module version")] = None,
+    digest: Annotated[str | None, typer.Option("--digest", help="Exact package digest for automation")] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
     config_file: Annotated[Path | None, typer.Option("--config-file")] = None,
     secrets_file: Annotated[Path | None, typer.Option("--secrets-file", help="Read secrets from a protected local JSON file")] = None,
 ) -> None:
     service = _service()
-    package = service.store.package(extension_id, version, digest)
-    if not package:
-        raise typer.BadParameter("Install the exact package before creating a connection")
-    manifest, _ = package
+    locale = _locale(service)
+    installed = service.store.installed_packages()
+    candidates = [
+        item for item in installed
+        if extension_id is None or item[0]["extension"]["id"] == extension_id
+    ]
+    if version is not None:
+        candidates = [
+            item for item in candidates
+            if item[0]["extension"]["version"] == version
+        ]
+    if digest is not None:
+        candidates = [
+            item for item in candidates
+            if item[0]["package"]["digest"] == digest
+        ]
+    if not candidates:
+        raise typer.BadParameter(
+            _message(
+                service,
+                "Подходящий модуль не установлен. Сначала выполните `buywell-edge module install <модуль>@<версия>`.",
+                "The requested module is not installed. Run `buywell-edge module install <module>@<version>` first.",
+            )
+        )
+    candidates.sort(
+        key=lambda item: (
+            str(item[0]["extension"]["id"]),
+            _version_key(str(item[0]["extension"]["version"])),
+        ),
+        reverse=True,
+    )
+    if extension_id is None and len({item[0]["extension"]["id"] for item in candidates}) > 1:
+        choices = {
+            str(index): item
+            for index, item in enumerate(candidates, start=1)
+        }
+        console.print(_message(service, "Выберите площадку:", "Select a platform:"))
+        for index, (manifest, _) in choices.items():
+            console.print(
+                f"  {index}. {_localized_name(manifest, locale)} "
+                f"({manifest['extension']['id']} · {manifest['extension']['version']})"
+            )
+        selected = Prompt.ask(
+            _message(service, "Номер", "Number"),
+            choices=list(choices),
+            default="1",
+        )
+        manifest, _ = choices[selected]
+    else:
+        manifest, _ = candidates[0]
+    extension = manifest["extension"]
+    extension_id = str(extension["id"])
+    version = str(extension["version"])
+    digest = str(manifest["package"]["digest"])
+    kind = kind or str(extension["kind"])
+    display_name = _localized_name(manifest, locale)
+    same_provider = [
+        item for item in service.store.connections()
+        if item.extension_id == extension_id
+    ]
+    default_name = display_name if not same_provider else f"{display_name} {len(same_provider) + 1}"
+    if name is None:
+        name = Prompt.ask(
+            _message(service, "Название аккаунта", "Account name"),
+            default=default_name,
+        )
+
+    configuration = manifest.get("configuration") or {}
+    schema = configuration.get("schema") or {}
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    secret_fields = list(configuration.get("secretFields") or [])
+    secret_fields = list(dict.fromkeys([
+        *secret_fields,
+        *[
+            field for field, field_schema in properties.items()
+            if _is_secret_schema(field_schema)
+        ],
+    ]))
     config = json.loads(config_file.read_text("utf-8")) if config_file else {}
-    secrets = json.loads(secrets_file.read_text("utf-8")) if secrets_file else {
-        field: typer.prompt(field.replace("_", " ").title(), hide_input=True)
-        for field in manifest["configuration"].get("secretFields", [])
-    }
+    if not config_file:
+        for field, field_schema in properties.items():
+            if field in secret_fields:
+                continue
+            default = field_schema.get("default")
+            label = _field_label(field, field_schema, locale)
+            if field not in required and default is None:
+                optional = Prompt.ask(
+                    f"{label} ({'необязательно' if locale == 'ru' else 'optional'})",
+                    default="",
+                )
+                if optional:
+                    config[field] = optional
+                continue
+            config[field] = _prompt_value(label, field_schema, default)
+    if secrets_file:
+        secrets = json.loads(secrets_file.read_text("utf-8"))
+    else:
+        secrets = {}
+        for field in secret_fields:
+            field_schema = properties.get(field) or {}
+            label = _field_label(field, field_schema, locale)
+            optional = field not in required
+            value = typer.prompt(
+                f"{label} ({'необязательно' if locale == 'ru' else 'optional'})"
+                if optional else label,
+                default="" if optional else None,
+                hide_input=True,
+                show_default=False,
+            )
+            if value:
+                secrets[field] = value
     connection_id = str(uuid.uuid4())
     secret_ref = f"connection:{connection_id}"
     service.vault.put(secret_ref, {key: str(value) for key, value in secrets.items()})
@@ -499,7 +692,19 @@ def connection_add(
         session_expires_at=None,
         last_success_at=None,
     ))
-    console.print(f"[green]Created[/] {name} ({connection_id})")
+    console.print(
+        _message(
+            service,
+            (
+                f"[green]Аккаунт подключён:[/] {name}.\n"
+                "Edge запустит его автоматически; статус появится в Buywell в течение 30 секунд."
+            ),
+            (
+                f"[green]Account connected:[/] {name}.\n"
+                "Edge will start it automatically; its status will appear in Buywell within 30 seconds."
+            ),
+        )
+    )
 
 
 @connection_app.command("login")

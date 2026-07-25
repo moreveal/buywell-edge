@@ -50,6 +50,7 @@ class GatewayClient:
         self.store.set_metadata("device_id", value["deviceId"])
         self.store.set_metadata("device_credential_ref", credential_reference)
         self.store.set_metadata("buywell_url", self.config.buywell_url)
+        self.store.set_metadata("locale", "en" if value.get("locale") == "en" else "ru")
         return value["deviceId"], value["credential"]
 
     async def run(self) -> None:
