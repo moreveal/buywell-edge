@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import signal
 import time
 from typing import Any
@@ -11,6 +12,8 @@ from .packages import PackageManager
 from .secrets import SecretVault
 from .storage import EdgeStore
 from .supervisor import ExtensionSupervisor
+
+logger = logging.getLogger(__name__)
 
 
 class EdgeService:
@@ -69,7 +72,13 @@ class EdgeService:
 
     async def handle_extension_event(self, process: Any, message: dict[str, Any]) -> None:
         connection = process.connection
-        event_id = self.store.enqueue_event(connection.id, {
+        # The SDK message is a transport envelope and contains ``type=event``.
+        # Build the platform event explicitly once, then persist and send that
+        # exact value. Spreading the transport envelope here used to add an
+        # undeclared ``type`` field to the first live delivery, while retries
+        # used the clean stored value. Strict Buywell ingestion consequently
+        # rejected the first delivery and only accepted it after a reconnect.
+        event = {
             "connectionId": connection.id,
             "instanceId": process.instance_id,
             "extensionId": connection.extension_id,
@@ -80,16 +89,9 @@ class EdgeService:
             "eventId": message.get("eventId"),
             "payload": message.get("payload") or {},
             "scope": message.get("scope") or {},
-        })
-        await self.gateway.send({"type": "event", "event": {
-            **message,
-            "connectionId": connection.id,
-            "instanceId": process.instance_id,
-            "extensionId": connection.extension_id,
-            "extensionVersion": connection.extension_version,
-            "packageDigest": connection.package_digest,
-            "eventId": event_id,
-        }})
+        }
+        event_id = self.store.enqueue_event(connection.id, event)
+        await self.gateway.send({"type": "event", "event": {**event, "eventId": event_id}})
 
     async def resend_events(self) -> None:
         for _event_id, _connection_id, payload in self.store.pending_events():
@@ -107,8 +109,13 @@ class EdgeService:
 
     async def handle_gateway_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
         kind = message.get("type")
+        if kind == "heartbeat.accepted":
+            # A successful heartbeat proves that the current socket is alive.
+            # Re-offer every due durable event until Buywell acknowledges its
+            # stable event id; ingestion is idempotent on that identity.
+            await self.resend_events()
+            return None
         if kind in (
-            "heartbeat.accepted",
             "connection.snapshot.accepted",
             "job.lease.extended",
             "job.result.accepted",
@@ -141,6 +148,16 @@ class EdgeService:
             return None
         if kind == "event.accepted" and message.get("eventId"):
             self.store.acknowledge_event(str(message["eventId"]))
+            return None
+        if kind == "event.rejected":
+            response = message.get("response") if isinstance(message.get("response"), dict) else {}
+            error = response.get("error") if isinstance(response.get("error"), dict) else {}
+            logger.warning(
+                "Buywell rejected Edge event %s (%s): %s",
+                str(message.get("eventId") or "unknown")[:256],
+                str(error.get("code") or "unknown")[:100],
+                str(error.get("message") or "Event ingestion failed")[:500],
+            )
             return None
         if kind == "connection.sync":
             return self.connection_snapshot(message.get("requestId"))
