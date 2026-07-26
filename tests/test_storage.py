@@ -38,6 +38,33 @@ def test_connection_and_idempotency_are_durable(tmp_path: Path):
     assert store.idempotency_result("operation") == {"status": "success", "value": {"value": 1}}
 
 
+def test_module_connection_snapshot_includes_its_signed_manifest(tmp_path: Path):
+    service = EdgeService.__new__(EdgeService)
+    service.store = EdgeStore(tmp_path / "edge.sqlite3")
+    service.supervisor = SimpleNamespace(processes={})
+    current = record()
+    manifest = {
+        "extension": {
+            "kind": "module",
+            "id": current.extension_id,
+            "version": current.extension_version,
+        },
+        "package": {"digest": current.package_digest},
+        "compatibility": {
+            "contractMode": "preserve-v1",
+            "moduleManifest": {"module": {"id": current.extension_id}},
+        },
+    }
+    package_directory = tmp_path / "package"
+    package_directory.mkdir()
+    service.store.register_package(manifest, package_directory)
+    service.store.upsert_connection(current)
+
+    snapshot = service.connection_snapshot()
+
+    assert snapshot["connections"][0]["manifest"] == manifest
+
+
 def test_switch_preserves_health_until_atomic_restart(tmp_path: Path):
     store = EdgeStore(tmp_path / "edge.sqlite3")
     current = record()

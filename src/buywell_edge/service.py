@@ -56,11 +56,7 @@ class EdgeService:
                     "sessionExpiresAt": item.session_expires_at,
                     "lastSuccessAt": item.last_success_at,
                 },
-                **(
-                    {"manifest": package[0]}
-                    if reported.kind == "adapter-driver" and package
-                    else {}
-                ),
+                **({"manifest": package[0]} if package else {}),
             })
         return {
             "type": "connection.snapshot",

@@ -88,6 +88,11 @@ resolver, and abstraction IDs and versions remain unchanged. The Edge package
 has a separate version and digest, so published workflow revisions do not need
 to be rewritten.
 
+When Edge connects, it sends Buywell the complete signed package manifest.
+This lets a private `preserve-v1` module be discovered like an official one:
+its events, bindings, resolvers, and blocks become available only after the
+signature, digest, and exact contract version have been verified.
+
 This does not alter Buywell v1 user authentication either: an existing
 connection key keeps working for the immutable legacy runtime until an explicit
 migration. Edge imports a provider session locally with user consent and gets
