@@ -11,6 +11,7 @@ def test_resolves_official_reference_case_insensitively() -> None:
 
     assert package is not None
     assert package.filename == "funpay.cardinal-1.3.3.buywell-edge.zip"
+    assert package.download_url == "https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.3/funpay.cardinal-1.3.3.buywell-edge.zip"
     assert len(package.public_key) == 32
 
 

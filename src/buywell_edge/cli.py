@@ -438,9 +438,8 @@ def module_install(
     if official:
         if trust_key:
             raise typer.BadParameter("--trust-key is only used with local package files")
-        url = f"{service.config.buywell_url}/edge/packages/{official.filename}"
         try:
-            response = httpx.get(url, follow_redirects=True, timeout=60)
+            response = httpx.get(official.download_url, follow_redirects=True, timeout=60)
             response.raise_for_status()
             verify_archive(official, response.content)
         except (httpx.HTTPError, ValueError) as error:
@@ -527,9 +526,8 @@ def module_update(
     if official:
         if trust_key:
             raise typer.BadParameter("--trust-key is only used with local package files")
-        url = f"{service.config.buywell_url}/edge/packages/{official.filename}"
         try:
-            response = httpx.get(url, follow_redirects=True, timeout=60)
+            response = httpx.get(official.download_url, follow_redirects=True, timeout=60)
             response.raise_for_status()
             verify_archive(official, response.content)
         except (httpx.HTTPError, ValueError) as error:
