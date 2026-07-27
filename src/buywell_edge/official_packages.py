@@ -20,10 +20,10 @@ OFFICIAL_PACKAGES = {
     item.reference: item
     for item in (
         OfficialPackage(
-            reference="funpay.cardinal@1.3.3",
-            filename="funpay.cardinal-1.3.3.buywell-edge.zip",
-            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.3/funpay.cardinal-1.3.3.buywell-edge.zip",
-            archive_sha256="59e4835414758e3d353b875e2029ca730f0213e596d0f15b50b130463a91125a",
+            reference="funpay.cardinal@1.3.4",
+            filename="funpay.cardinal-1.3.4.buywell-edge.zip",
+            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.4/funpay.cardinal-1.3.4.buywell-edge.zip",
+            archive_sha256="40346ccb084082a5a8a6dde7dfa342405b2316a45829e4b0ddcba6ed9f7bb7e9",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
