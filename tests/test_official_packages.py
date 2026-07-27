@@ -7,16 +7,16 @@ from buywell_edge.official_packages import official_package, verify_archive
 
 
 def test_resolves_official_reference_case_insensitively() -> None:
-    package = official_package(" FunPay.Cardinal@1.3.4 ")
+    package = official_package(" FunPay.Cardinal@1.3.5 ")
 
     assert package is not None
-    assert package.filename == "funpay.cardinal-1.3.4.buywell-edge.zip"
-    assert package.download_url == "https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.4/funpay.cardinal-1.3.4.buywell-edge.zip"
+    assert package.filename == "funpay.cardinal-1.3.5.buywell-edge.zip"
+    assert package.download_url == "https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.5/funpay.cardinal-1.3.5.buywell-edge.zip"
     assert len(package.public_key) == 32
 
 
 def test_rejects_content_outside_pinned_release() -> None:
-    package = official_package("funpay.cardinal@1.3.4")
+    package = official_package("funpay.cardinal@1.3.5")
     assert package is not None
 
     with pytest.raises(ValueError, match="checksum"):

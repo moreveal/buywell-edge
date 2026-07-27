@@ -20,17 +20,17 @@ OFFICIAL_PACKAGES = {
     item.reference: item
     for item in (
         OfficialPackage(
-            reference="funpay.cardinal@1.3.4",
-            filename="funpay.cardinal-1.3.4.buywell-edge.zip",
-            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.4/funpay.cardinal-1.3.4.buywell-edge.zip",
-            archive_sha256="40346ccb084082a5a8a6dde7dfa342405b2316a45829e4b0ddcba6ed9f7bb7e9",
+            reference="funpay.cardinal@1.3.5",
+            filename="funpay.cardinal-1.3.5.buywell-edge.zip",
+            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.5/funpay.cardinal-1.3.5.buywell-edge.zip",
+            archive_sha256="871d7242ce3c98e5ca1138851d25d996d706939fe7540fc4fc14a51381db1663",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
-            reference="ggsel.seller@1.2.4",
-            filename="ggsel.seller-1.2.4.buywell-edge.zip",
-            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/ggsel.seller-v1.2.4/ggsel.seller-1.2.4.buywell-edge.zip",
-            archive_sha256="30adf63bbe04848aa0372043a538d736abc94975a16c10e80748778cdccbad2c",
+            reference="ggsel.seller@1.2.5",
+            filename="ggsel.seller-1.2.5.buywell-edge.zip",
+            download_url="https://github.com/moreveal/buywell-runtimes/releases/download/ggsel.seller-v1.2.5/ggsel.seller-1.2.5.buywell-edge.zip",
+            archive_sha256="7d832edd495cbab93c382f5d01c6733c82e3e8a283310e9502ae1106e69df728",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
