@@ -19,9 +19,9 @@ OFFICIAL_PACKAGES = {
     item.reference: item
     for item in (
         OfficialPackage(
-            reference="funpay.cardinal@1.3.2",
-            filename="funpay.cardinal-1.3.2.buywell-edge.zip",
-            archive_sha256="b315ee7d297de1809409b384e71e5e6a579e5aa256c9b651d88e89d950c784a7",
+            reference="funpay.cardinal@1.3.3",
+            filename="funpay.cardinal-1.3.3.buywell-edge.zip",
+            archive_sha256="59e4835414758e3d353b875e2029ca730f0213e596d0f15b50b130463a91125a",
             public_key=_PUBLIC_KEY,
         ),
         OfficialPackage(
