@@ -19,6 +19,17 @@ def test_binding_catalog_job_uses_request_id() -> None:
     }) == "catalog-request-1"
 
 
+def test_input_resolver_idempotency_is_scoped_to_delivery_attempt() -> None:
+    job = {
+        "jobId": "job-1",
+        "idempotencyKey": "execution:url",
+        "jobKind": "input-resolver",
+    }
+
+    assert job_idempotency_key({**job, "deliveryAttempt": 1}) == "execution:url:delivery:1"
+    assert job_idempotency_key({**job, "deliveryAttempt": 2}) == "execution:url:delivery:2"
+
+
 def test_legacy_job_falls_back_to_durable_job_id() -> None:
     assert job_idempotency_key({"jobId": "job-1"}) == "job-1"
 
