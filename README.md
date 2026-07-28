@@ -72,6 +72,12 @@ process becomes ready. A manual `module switch` retains the last confirmed
 health while the old process drains instead of publishing a false offline
 transition.
 
+The Edge binary does not embed a current module version or an official module
+catalog. It reads the catalog from the paired Buywell service for every
+official install or update, then verifies the downloaded archive against the
+catalog SHA-256 and the public signing key built into Edge. Publishing a module
+therefore never requires a new Edge release.
+
 Use `connection list --json` or `module list --json` for automation that
 needs exact identifiers.
 

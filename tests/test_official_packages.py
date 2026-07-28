@@ -1,27 +1,73 @@
 import os
 
+import httpx
 import pytest
 
 from buywell_edge.config import default_state_directory
-from buywell_edge.official_packages import official_package, verify_archive
+from buywell_edge.official_packages import (
+    fetch_official_packages,
+    official_package,
+    parse_official_package_catalog,
+    verify_archive,
+)
+
+
+CATALOG = {
+    "schemaVersion": 1,
+    "packages": [
+        {
+            "extensionId": "funpay.cardinal",
+            "version": "1.3.10",
+            "filename": "funpay.cardinal-1.3.10.buywell-edge.zip",
+            "downloadPath": "/edge/packages/funpay.cardinal-1.3.10.buywell-edge.zip",
+            "archiveSha256": "30a3f578f326a889c4790b5120769536658188e8b2a079cf38bcb0ff136fc81a",
+        }
+    ],
+}
 
 
 def test_resolves_official_reference_case_insensitively() -> None:
-    package = official_package(" FunPay.Cardinal@1.3.10 ")
+    packages = parse_official_package_catalog(CATALOG, "https://buywell.pro")
+    package = official_package(" FunPay.Cardinal@1.3.10 ", packages)
 
     assert package is not None
     assert package.filename == "funpay.cardinal-1.3.10.buywell-edge.zip"
-    assert package.download_url == "https://github.com/moreveal/buywell-runtimes/releases/download/funpay.cardinal-v1.3.10/funpay.cardinal-1.3.10.buywell-edge.zip"
+    assert package.download_url == "https://buywell.pro/edge/packages/funpay.cardinal-1.3.10.buywell-edge.zip"
     assert package.archive_sha256 == "30a3f578f326a889c4790b5120769536658188e8b2a079cf38bcb0ff136fc81a"
     assert len(package.public_key) == 32
 
 
 def test_rejects_content_outside_pinned_release() -> None:
-    package = official_package("funpay.cardinal@1.3.10")
+    packages = parse_official_package_catalog(CATALOG, "https://buywell.pro")
+    package = official_package("funpay.cardinal@1.3.10", packages)
     assert package is not None
 
     with pytest.raises(ValueError, match="checksum"):
         verify_archive(package, b"not the official archive")
+
+
+def test_rejects_catalog_paths_that_do_not_match_the_package_identity() -> None:
+    invalid = {
+        **CATALOG,
+        "packages": [{**CATALOG["packages"][0], "downloadPath": "/other.zip"}],
+    }
+    with pytest.raises(ValueError, match="download path"):
+        parse_official_package_catalog(invalid, "https://buywell.pro")
+
+
+def test_fetches_the_catalog_from_the_paired_buywell_origin() -> None:
+    requested: list[str] = []
+
+    def request(url: str, **_kwargs) -> httpx.Response:
+        requested.append(url)
+        return httpx.Response(200, json=CATALOG, request=httpx.Request("GET", url))
+
+    packages = fetch_official_packages("https://automation.example", request)
+
+    assert requested == ["https://automation.example/api/v2/edge/official-packages"]
+    assert packages["funpay.cardinal@1.3.10"].download_url == (
+        "https://automation.example/edge/packages/funpay.cardinal-1.3.10.buywell-edge.zip"
+    )
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Linux service account path")

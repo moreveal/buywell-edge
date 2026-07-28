@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from . import __version__
 from .config import EdgeConfig
-from .official_packages import OFFICIAL_PACKAGES, official_package, verify_archive
+from .official_packages import fetch_official_packages, official_package, verify_archive
 from .service import EdgeService, serve
 from .storage import ConnectionRecord, EdgeStore
 from .system_user import repair_state_ownership, run_as_service_user, should_use_service_user
@@ -64,6 +64,19 @@ def _locale(service: EdgeService) -> str:
 
 def _message(service: EdgeService, ru: str, en: str) -> str:
     return en if _locale(service) == "en" else ru
+
+
+def _official_packages(service: EdgeService):
+    try:
+        return fetch_official_packages(service.config.buywell_url)
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(
+            _message(
+                service,
+                f"Не удалось получить каталог официальных модулей Buywell: {error}",
+                f"Could not load the Buywell official module catalog: {error}",
+            )
+        ) from error
 
 
 def _version_key(value: str) -> tuple[int, int, int, str]:
@@ -434,7 +447,8 @@ def module_install(
             raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         trusted = {raw}
     archive = Path(package)
-    official = official_package(package)
+    official_packages = {} if archive.is_file() else _official_packages(service)
+    official = official_package(package, official_packages)
     if official:
         if trust_key:
             raise typer.BadParameter("--trust-key is only used with local package files")
@@ -453,7 +467,7 @@ def module_install(
         archive = temporary_path
         trusted = {official.public_key}
     elif not archive.is_file():
-        examples = ", ".join(OFFICIAL_PACKAGES)
+        examples = ", ".join(official_packages)
         raise typer.BadParameter(
             f"Package file was not found: {package}. "
             f"Use an official reference ({examples}) or an existing local ZIP file."
@@ -501,11 +515,15 @@ def module_update(
                 raise typer.BadParameter("Trusted key must be Ed25519")
             raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         trusted = {raw}
-    official = official_package(package) if package else None
+    archive = Path(package) if package else Path()
+    official_packages = (
+        {} if package and archive.is_file() else _official_packages(service)
+    )
+    official = official_package(package, official_packages) if package else None
     if package is None:
         candidates = [
             item
-            for item in OFFICIAL_PACKAGES.values()
+            for item in official_packages.values()
             if item.reference.partition("@")[0] == selected.extension_id
             and _version_key(item.reference.partition("@")[2])
             > _version_key(selected.extension_version)
@@ -522,7 +540,6 @@ def module_update(
             candidates,
             key=lambda item: _version_key(item.reference.partition("@")[2]),
         )
-    archive = Path(package) if package else Path()
     if official:
         if trust_key:
             raise typer.BadParameter("--trust-key is only used with local package files")

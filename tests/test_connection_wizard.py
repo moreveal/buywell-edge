@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from buywell_edge.cli import app
 from buywell_edge.config import EdgeConfig
+from buywell_edge.official_packages import OfficialPackage
 from buywell_edge.service import EdgeService
 from buywell_edge.storage import ConnectionRecord
 
@@ -245,6 +246,18 @@ def test_module_update_downloads_switches_and_schedules_old_package_cleanup(
         return SimpleNamespace(manifest=updated, digest="b" * 64)
 
     monkeypatch.setattr("buywell_edge.cli._service", lambda: edge)
+    monkeypatch.setattr(
+        "buywell_edge.cli.fetch_official_packages",
+        lambda _url: {
+            "funpay.cardinal@1.3.1": OfficialPackage(
+                reference="funpay.cardinal@1.3.1",
+                filename="funpay.cardinal-1.3.1.buywell-edge.zip",
+                download_url="https://buywell.pro/edge/packages/funpay.cardinal-1.3.1.buywell-edge.zip",
+                archive_sha256="c" * 64,
+                public_key=b"k" * 32,
+            )
+        },
+    )
     monkeypatch.setattr(
         "buywell_edge.cli.httpx.get",
         lambda *_args, **_kwargs: SimpleNamespace(
