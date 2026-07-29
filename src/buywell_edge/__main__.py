@@ -5,6 +5,20 @@ import sys
 import os
 
 
+def _enable_frozen_pip_resources() -> None:
+    """Teach distlib how to read data collected by PyInstaller."""
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        import pip._vendor.distlib as distlib
+        from pip._vendor.distlib import resources
+    except ImportError:
+        return
+    loader = getattr(distlib, "__loader__", None)
+    if loader is not None:
+        resources.register_finder(loader, resources.ResourceFinder)
+
+
 def _python_compatibility_mode() -> bool:
     """Let the frozen Edge binary host pip and extension subprocesses."""
     if getattr(sys, "frozen", False):
@@ -13,6 +27,8 @@ def _python_compatibility_mode() -> bool:
                 sys.path.insert(0, path)
     if len(sys.argv) >= 3 and sys.argv[1] == "-m":
         module = sys.argv[2]
+        if module == "pip" or module.startswith("pip."):
+            _enable_frozen_pip_resources()
         sys.argv = [module, *sys.argv[3:]]
         runpy.run_module(module, run_name="__main__", alter_sys=True)
         return True
