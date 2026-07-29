@@ -16,5 +16,12 @@ def test_installer_stops_existing_service_before_switching_current() -> None:
     script = Path("install/install.ps1").read_text("utf-8")
 
     stop = script.index("Stop-Service -Name BuywellEdge")
-    switch = script.index("Remove-Item -Force -LiteralPath $current")
+    switch = script.index("[System.IO.Directory]::Delete($current)")
     assert stop < switch
+
+
+def test_installer_does_not_follow_current_junction_during_switch() -> None:
+    script = Path("install/install.ps1").read_text("utf-8")
+
+    assert "Remove-Item -Force -LiteralPath $current" not in script
+    assert "[System.IO.Directory]::Delete($current)" in script

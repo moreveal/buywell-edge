@@ -26,7 +26,7 @@ try {
     Stop-Service -Name BuywellEdge -Force
     $existing.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(20))
   }
-  if (Test-Path -LiteralPath $current) { Remove-Item -Force -LiteralPath $current }
+  if (Test-Path -LiteralPath $current) { [System.IO.Directory]::Delete($current) }
   New-Item -ItemType Junction -Path $current -Target $target | Out-Null
   $executable = Join-Path $current "buywell-edge.exe"
   $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
