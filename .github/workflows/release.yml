@@ -68,6 +68,14 @@ jobs:
           --collect-all setuptools
           --collect-all wheel
           src/buywell_edge/__main__.py
+      - shell: pwsh
+        run: |
+          $edge = Resolve-Path "dist/buywell-edge/buywell-edge.exe"
+          & $edge -c "import servicemanager, win32service, win32serviceutil"
+          if ($LASTEXITCODE -ne 0) { throw "Frozen Windows service runtime is incomplete" }
+          $target = Join-Path $env:RUNNER_TEMP "edge-pip-smoke"
+          & $edge -m pip install --disable-pip-version-check --no-input --no-deps --target $target httpx==0.28.1
+          if ($LASTEXITCODE -ne 0) { throw "Frozen pip dependency installation failed" }
       - run: python tools/build_release.py
       - uses: actions/upload-artifact@v4
         with:
