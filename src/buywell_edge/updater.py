@@ -5,6 +5,7 @@ import hashlib
 import os
 import platform
 import shutil
+import subprocess
 import tempfile
 import tarfile
 import zipfile
@@ -55,6 +56,10 @@ class ReleaseManager:
     def _make_release_traversable(release: Path) -> None:
         """Allow the dedicated service account to execute a root-installed release."""
         if os.name == "nt":
+            subprocess.run(
+                ["icacls.exe", str(release), "/reset", "/T", "/C", "/Q"],
+                check=True,
+            )
             return
         release.chmod(release.stat().st_mode | 0o055)
 

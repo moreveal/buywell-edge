@@ -4,6 +4,7 @@ import io
 import os
 import tarfile
 from pathlib import Path
+from unittest.mock import patch
 
 from buywell_edge.updater import ReleaseManager
 
@@ -38,3 +39,18 @@ def test_install_repairs_existing_release_permissions(tmp_path: Path) -> None:
 
     if os.name != "nt":
         assert release.stat().st_mode & 0o055 == 0o055
+
+
+def test_windows_release_permissions_are_reset_to_inherited_acl(tmp_path: Path) -> None:
+    release = tmp_path / "release"
+
+    with (
+        patch("buywell_edge.updater.os.name", "nt"),
+        patch("buywell_edge.updater.subprocess.run") as run,
+    ):
+        ReleaseManager._make_release_traversable(release)
+
+    run.assert_called_once_with(
+        ["icacls.exe", str(release), "/reset", "/T", "/C", "/Q"],
+        check=True,
+    )
