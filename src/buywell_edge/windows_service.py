@@ -75,6 +75,32 @@ def configure_service(executable: Path) -> None:
     )
 
 
+def grant_state_access(state_directory: Path) -> None:
+    _require_windows()
+    domain = os.environ.get("USERDOMAIN", "").strip()
+    username = os.environ.get("USERNAME", "").strip()
+    if not username:
+        raise RuntimeError("Unable to identify the Windows user installing Edge")
+    identity = f"{domain}\\{username}" if domain else username
+    result = subprocess.run(
+        [
+            "icacls.exe",
+            str(state_directory),
+            "/grant:r",
+            f"{identity}:(OI)(CI)M",
+            "/T",
+            "/C",
+            "/Q",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise RuntimeError(detail or "Unable to grant access to the Edge state directory")
+
+
 def stop_service() -> None:
     _require_windows()
     state = service_state()

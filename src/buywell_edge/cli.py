@@ -37,6 +37,7 @@ from .system_user import repair_state_ownership, run_as_service_user, should_use
 from .updater import ReleaseManager
 from .windows_service import (
     configure_service,
+    grant_state_access,
     run_service_dispatcher,
     service_exists,
     start_service,
@@ -755,6 +756,7 @@ def edge_update(
             return
         manager.install(archive, resolved_version)
         if os.name == "nt":
+            grant_state_access(config.state_directory)
             stop_service()
         previous = manager.switch(resolved_version)
         if os.name == "nt":
@@ -812,6 +814,7 @@ def service_run() -> None:
 @app.command("service-install", hidden=True)
 def service_install() -> None:
     config = EdgeConfig.load()
+    grant_state_access(config.state_directory)
     EdgeService(config)
     configure_service(config.install_directory / "current" / "buywell-edge.exe")
 

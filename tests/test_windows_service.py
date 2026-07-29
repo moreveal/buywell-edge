@@ -65,3 +65,28 @@ def test_start_is_idempotent_when_service_is_running(monkeypatch) -> None:
     windows_service.start_service()
 
     assert calls == [("query", "BuywellEdge")]
+
+
+def test_state_access_is_granted_only_to_installing_user(monkeypatch, tmp_path) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(windows_service, "_require_windows", lambda: None)
+    monkeypatch.setenv("USERDOMAIN", "WORKSTATION")
+    monkeypatch.setenv("USERNAME", "owner")
+
+    def run(arguments, **kwargs):
+        calls.append(arguments)
+        return completed()
+
+    monkeypatch.setattr(windows_service.subprocess, "run", run)
+
+    windows_service.grant_state_access(tmp_path)
+
+    assert calls == [[
+        "icacls.exe",
+        str(tmp_path),
+        "/grant:r",
+        r"WORKSTATION\owner:(OI)(CI)M",
+        "/T",
+        "/C",
+        "/Q",
+    ]]
