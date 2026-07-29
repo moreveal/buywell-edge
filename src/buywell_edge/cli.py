@@ -35,6 +35,13 @@ from .service import EdgeService, serve
 from .storage import ConnectionRecord, EdgeStore
 from .system_user import repair_state_ownership, run_as_service_user, should_use_service_user
 from .updater import ReleaseManager
+from .windows_service import (
+    configure_service,
+    run_service_dispatcher,
+    service_exists,
+    start_service,
+    stop_service,
+)
 
 app = typer.Typer(no_args_is_help=True, help="Buywell Edge")
 module_app = typer.Typer(no_args_is_help=True)
@@ -198,6 +205,9 @@ def connect(
 ) -> None:
     service = _service()
     device_id, _ = asyncio.run(service.gateway.pair(code, name))
+    if os.name == "nt" and service_exists():
+        stop_service()
+        start_service()
     console.print(f"[green]Connected.[/] Device {device_id[:8]} is now visible in Buywell.")
 
 
@@ -744,8 +754,13 @@ def edge_update(
             )
             return
         manager.install(archive, resolved_version)
+        if os.name == "nt":
+            stop_service()
         previous = manager.switch(resolved_version)
-        if os.name != "nt":
+        if os.name == "nt":
+            configure_service(config.install_directory / "current" / "buywell-edge.exe")
+            start_service()
+        else:
             repair_state_ownership(config.state_directory)
             service_file = manager.releases / resolved_version / "share" / "buywell-edge.service"
             shutil.copy2(service_file, "/etc/systemd/system/buywell-edge.service")
@@ -787,6 +802,23 @@ def edge_update(
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)
+
+
+@app.command("service-run", hidden=True)
+def service_run() -> None:
+    run_service_dispatcher()
+
+
+@app.command("service-install", hidden=True)
+def service_install() -> None:
+    config = EdgeConfig.load()
+    EdgeService(config)
+    configure_service(config.install_directory / "current" / "buywell-edge.exe")
+
+
+@app.command("service-start", hidden=True)
+def service_start() -> None:
+    start_service()
 
 
 @app.command("rollback")

@@ -21,6 +21,11 @@ try {
   $target = Join-Path $installRoot "releases\$release"
   Expand-Archive -LiteralPath $archive -DestinationPath $target
   $current = Join-Path $installRoot "current"
+  $existing = Get-Service -Name BuywellEdge -ErrorAction SilentlyContinue
+  if ($existing -and $existing.Status -ne "Stopped") {
+    Stop-Service -Name BuywellEdge -Force
+    $existing.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(20))
+  }
   if (Test-Path -LiteralPath $current) { Remove-Item -Force -LiteralPath $current }
   New-Item -ItemType Junction -Path $current -Target $target | Out-Null
   $executable = Join-Path $current "buywell-edge.exe"
@@ -28,12 +33,13 @@ try {
   if (($machinePath -split ";") -notcontains $current) {
     [Environment]::SetEnvironmentVariable("Path", ($machinePath.TrimEnd(";") + ";" + $current), "Machine")
   }
-  $existing = Get-Service -Name BuywellEdge -ErrorAction SilentlyContinue
-  if ($existing) { & sc.exe stop BuywellEdge | Out-Null; & sc.exe delete BuywellEdge | Out-Null }
-  & sc.exe create BuywellEdge binPath= "`"$executable`" run" start= auto | Out-Null
-  & sc.exe failure BuywellEdge reset= 86400 actions= restart/5000/restart/30000 | Out-Null
-  & sc.exe start BuywellEdge | Out-Null
   if ($PairCode) { & $executable connect $PairCode }
+  & $executable service-install
+  if ($LASTEXITCODE -ne 0) { throw "Buywell Edge service registration failed" }
+  if ($PairCode -or (Test-Path -LiteralPath (Join-Path $stateRoot "edge.sqlite3"))) {
+    & $executable service-start
+    if ($LASTEXITCODE -ne 0) { throw "Buywell Edge service did not start" }
+  }
   Write-Host "Buywell Edge is installed. Run: `"$executable`" status"
 }
 finally {

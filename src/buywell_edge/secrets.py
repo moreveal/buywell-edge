@@ -15,14 +15,18 @@ class _DataBlob(ctypes.Structure):
     _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
 
 
-def _dpapi(value: bytes, *, protect: bool) -> bytes:
+_MACHINE_SCOPE_PREFIX = b"buywell-machine-dpapi\0"
+
+
+def _dpapi(value: bytes, *, protect: bool, machine_scope: bool = False) -> bytes:
     buffer = ctypes.create_string_buffer(value)
     source = _DataBlob(len(value), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
     output = _DataBlob()
     crypt32 = ctypes.windll.crypt32
     kernel32 = ctypes.windll.kernel32
     if protect:
-        success = crypt32.CryptProtectData(ctypes.byref(source), "Buywell Edge", None, None, None, 0, ctypes.byref(output))
+        flags = 0x4 if machine_scope else 0
+        success = crypt32.CryptProtectData(ctypes.byref(source), "Buywell Edge", None, None, None, flags, ctypes.byref(output))
     else:
         success = crypt32.CryptUnprotectData(ctypes.byref(source), None, None, None, None, 0, ctypes.byref(output))
     if not success:
@@ -52,12 +56,23 @@ class SecretVault:
         if self.key_file.exists():
             wrapped = self.key_file.read_bytes()
             if os.name == "nt":
-                return _dpapi(wrapped, protect=False)
+                if wrapped.startswith(_MACHINE_SCOPE_PREFIX):
+                    return _dpapi(wrapped[len(_MACHINE_SCOPE_PREFIX):], protect=False)
+                key = _dpapi(wrapped, protect=False)
+                migrated = self.key_file.with_suffix(".migrating")
+                migrated.write_bytes(
+                    _MACHINE_SCOPE_PREFIX
+                    + _dpapi(key, protect=True, machine_scope=True)
+                )
+                os.replace(migrated, self.key_file)
+                return key
             return wrapped
         key = AESGCM.generate_key(bit_length=256)
         wrapped = key
         if os.name == "nt":
-            wrapped = _dpapi(key, protect=True)
+            wrapped = _MACHINE_SCOPE_PREFIX + _dpapi(
+                key, protect=True, machine_scope=True
+            )
         self.key_file.write_bytes(wrapped)
         try:
             os.chmod(self.key_file, 0o600)
