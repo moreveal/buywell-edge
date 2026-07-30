@@ -15,7 +15,7 @@ from pydantic_core import PydanticUndefined
 
 EDGE_PROTOCOL_VERSION = "2.0.0"
 EDGE_MANIFEST_VERSION = 2
-SDK_VERSION = "0.1.39"
+SDK_VERSION = "0.1.40"
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CONTRACT_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
@@ -68,6 +68,14 @@ class ActionContext:
 @dataclass(frozen=True)
 class AdapterContext(ActionContext):
     operation_id: str
+
+
+class ExecutionOutcome(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    execution_id: str = Field(alias="executionId")
+    terminal_status: str = Field(alias="terminalStatus", pattern="^(succeeded|failed|canceled)$")
+    finished_at: str = Field(alias="finishedAt")
+    error: dict[str, str] | None = None
 
 
 class LocalizedText(BaseModel):
@@ -205,6 +213,8 @@ class ExtensionDefinition:
     start_handler: Handler | None = field(default=None, repr=False)
     stop_handler: Handler | None = field(default=None, repr=False)
     migration_handler: Handler | None = field(default=None, repr=False)
+    execution_outcome_handler: Handler | None = field(default=None, repr=False)
+    execution_outcome_context: list[dict[str, str]] = field(default_factory=list, repr=False)
     legacy_module_manifest: dict[str, Any] | None = field(default=None, repr=False)
     guides: LocalizedFiles | None = None
     changelog: LocalizedFiles | None = None
@@ -350,6 +360,29 @@ class ExtensionDefinition:
         self.migration_handler = handler
         return handler
 
+    def execution_outcomes(
+        self,
+        *,
+        required_event_context: list[dict[str, str]],
+    ) -> Callable[[Handler], Handler]:
+        if self.kind is not ExtensionKind.MODULE:
+            raise ValueError("Execution outcomes are available only to marketplace modules")
+        normalized: list[dict[str, str]] = []
+        for item in required_event_context:
+            required = {"eventType", "eventVersion", "source", "path"}
+            if set(item) != required or item["source"] not in {"payload", "scope"}:
+                raise ValueError("Execution outcome context declaration is invalid")
+            normalized.append({key: str(item[key]) for key in ("eventType", "eventVersion", "source", "path")})
+
+        def decorate(handler: Handler) -> Handler:
+            if self.execution_outcome_handler is not None:
+                raise ValueError("Only one execution outcome handler may be registered")
+            self.execution_outcome_handler = handler
+            self.execution_outcome_context = normalized
+            return handler
+
+        return decorate
+
     def manifest(self) -> dict[str, Any]:
         contracts: dict[str, Any] = {}
         if self.events:
@@ -358,6 +391,11 @@ class ExtensionDefinition:
             contracts["actions"] = [item.model_dump(by_alias=True, exclude_none=True) for item in self.actions]
         if self.operations:
             contracts["adapterOperations"] = [item.model_dump(by_alias=True, exclude_none=True) for item in self.operations]
+        if self.execution_outcome_handler:
+            contracts["executionOutcomes"] = {
+                "version": "1.0.0",
+                "requiredEventContext": self.execution_outcome_context,
+            }
         config = ConfigSpec(schema=_schema(self.config_model), secret_fields=_secret_fields(self.config_model))
         manifest = {
             "schemaVersion": EDGE_MANIFEST_VERSION,

@@ -55,6 +55,26 @@
         "leaseToken": { "type": "string", "format": "uuid" },
         "connectionId": { "type": "string", "format": "uuid" }
       }
+    },
+    {
+      "type": "object",
+      "required": ["type", "connectionId", "job"],
+      "properties": {
+        "type": { "const": "execution-result.request" },
+        "connectionId": { "type": "string", "format": "uuid" },
+        "instanceId": { "type": ["string", "null"] },
+        "job": {
+          "type": "object",
+          "required": ["jobKind", "executionId", "terminalStatus", "finishedAt", "context"],
+          "properties": {
+            "jobKind": { "const": "execution-outcome" },
+            "executionId": { "type": "string" },
+            "terminalStatus": { "enum": ["succeeded", "failed", "canceled"] },
+            "finishedAt": { "type": "string", "format": "date-time" },
+            "context": { "type": "object" }
+          }
+        }
+      }
     }
   ]
 }

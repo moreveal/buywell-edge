@@ -103,3 +103,35 @@ control plane.
 Provider implementation can evolve independently, including reviewed changes
 from a pinned upstream source. Any public contract change still requires a new
 module version and the usual contract tests.
+
+## Workflow execution outcomes
+
+A module that needs the terminal result of a workflow it triggered explicitly
+opts in to `executionOutcomes@1.0.0`. Only the declared event-context paths are
+included in the manifest and delivered; arbitrary payload and scope data are
+not exposed to the handler.
+
+```python
+from buywell_edge_sdk import ExecutionOutcome
+
+@extension.execution_outcomes(required_event_context=[{
+    "eventType": "commerce.purchase.created",
+    "eventVersion": "1.0.0",
+    "source": "scope",
+    "path": "orderId",
+}])
+async def execution_outcome(context, outcome: ExecutionOutcome):
+    await orders.finish(
+        order_id=context.event_scope["orderId"],
+        execution_id=outcome.execution_id,
+        status=outcome.terminal_status,
+        error=outcome.error,
+    )
+    return {"accepted": True}
+```
+
+Buywell delivers `succeeded`, `failed`, or `canceled` after persisting the
+terminal state. Delivery is idempotent by `executionId`, survives Automation
+and Edge restarts, and is acknowledged only after the handler returns
+successfully. For a temporary failure, the handler may raise an exception with
+`retryable = True`; other errors finish the attempt without an endless retry.

@@ -166,6 +166,7 @@ class EdgeService:
             "adapter.operation.request",
             "binding-catalog.request",
             "input-resolver.request",
+            "execution-result.request",
         ):
             task = asyncio.create_task(self._execute_job(message))
             self._job_tasks.add(task)
@@ -190,6 +191,8 @@ class EdgeService:
         job_kind = job.get("jobKind")
         if job_kind in ("binding-catalog", "input-resolver"):
             job["type"] = job_kind
+        elif job_kind == "execution-outcome":
+            job["type"] = "execution-outcome"
         else:
             job["type"] = "adapter.operation" if str(message["type"]).startswith("adapter.") else "action"
             job["contractId"] = str(job.get("nodeType") or job.get("contractId") or "")

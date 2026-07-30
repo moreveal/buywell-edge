@@ -30,6 +30,17 @@ def test_input_resolver_idempotency_is_scoped_to_delivery_attempt() -> None:
     assert job_idempotency_key({**job, "deliveryAttempt": 2}) == "execution:url:delivery:2"
 
 
+def test_execution_outcome_idempotency_is_scoped_to_delivery_attempt() -> None:
+    job = {
+        "jobId": "job-1",
+        "idempotencyKey": "execution-outcome:one",
+        "jobKind": "execution-outcome",
+    }
+
+    assert job_idempotency_key({**job, "deliveryAttempt": 1}) == "execution-outcome:one:delivery:1"
+    assert job_idempotency_key({**job, "deliveryAttempt": 2}) == "execution-outcome:one:delivery:2"
+
+
 def test_legacy_job_falls_back_to_durable_job_id() -> None:
     assert job_idempotency_key({"jobId": "job-1"}) == "job-1"
 

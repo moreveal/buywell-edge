@@ -101,3 +101,34 @@ credential выдаётся отдельным одноразовым pairing-п
 Provider implementation можно обновлять отдельно, в том числе переносить
 проверенные изменения из закреплённого upstream. Любое изменение публичного
 контракта всё равно требует новой версии модуля и обычных contract tests.
+
+## Результат выполнения сценария
+
+Модуль, которому нужен итог запущенного им сценария, явно подключает
+`executionOutcomes@1.0.0`. В manifest попадают только перечисленные пути
+контекста события; произвольные payload и scope обработчику не раскрываются.
+
+```python
+from buywell_edge_sdk import ExecutionOutcome
+
+@extension.execution_outcomes(required_event_context=[{
+    "eventType": "commerce.purchase.created",
+    "eventVersion": "1.0.0",
+    "source": "scope",
+    "path": "orderId",
+}])
+async def execution_outcome(context, outcome: ExecutionOutcome):
+    await orders.finish(
+        order_id=context.event_scope["orderId"],
+        execution_id=outcome.execution_id,
+        status=outcome.terminal_status,
+        error=outcome.error,
+    )
+    return {"accepted": True}
+```
+
+Buywell доставляет `succeeded`, `failed` или `canceled` после фиксации
+terminal-состояния. Доставка идемпотентна по `executionId`, переживает рестарт
+Automation и Edge и подтверждается только после успешного возврата handler.
+Для временной ошибки handler может поднять исключение с атрибутом
+`retryable = True`; остальные ошибки завершают попытку без бесконечного повтора.

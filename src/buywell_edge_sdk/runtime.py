@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from .contracts import ActionContext, AdapterContext, ExtensionDefinition, Health, HealthState
+from .contracts import ActionContext, AdapterContext, ExecutionOutcome, ExtensionDefinition, Health, HealthState
 
 
 @dataclass
@@ -164,6 +164,29 @@ class ExtensionRuntime:
                         "retryable": bool(getattr(error, "retryable", False)),
                     },
                 }
+        if kind == "execution-outcome":
+            if not self.extension.execution_outcome_handler:
+                return {"type": "job.result", "requestId": request_id, "status": "error", "error": {"code": "CONTRACT_NOT_FOUND", "message": "Execution outcome handler is unavailable", "retryable": False}}
+            context = ActionContext(
+                connection_id=self.session.connection_id,
+                instance_id=self.session.instance_id,
+                job_id=str(message["jobId"]),
+                idempotency_key=str(message["idempotencyKey"]),
+                state=self.session.state_directory,
+                config=self.session.config,
+                secrets=self.session.secrets,
+                event_payload={},
+                event_scope=dict((message.get("context") or {}).get("eventScope") or {}),
+            )
+            try:
+                outcome = ExecutionOutcome.model_validate(message)
+                value = self.extension.execution_outcome_handler(context, outcome)
+                if asyncio.iscoroutine(value):
+                    value = await value
+                outputs = value if isinstance(value, dict) else {}
+                return {"type": "job.result", "requestId": request_id, "status": "success", "outputs": outputs}
+            except Exception as error:
+                return {"type": "job.result", "requestId": request_id, "status": "error", "error": {"code": getattr(error, "code", "EXTENSION_ERROR"), "message": str(error)[:2_000], "retryable": bool(getattr(error, "retryable", False))}}
         if kind == "shutdown":
             if self.extension.stop_handler:
                 value = self.extension.stop_handler(self.session)

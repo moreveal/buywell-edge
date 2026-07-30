@@ -75,7 +75,34 @@
         "subprocesses": { "type": "boolean" }
       }
     },
-    "contracts": { "type": "object" },
+    "contracts": {
+      "type": "object",
+      "properties": {
+        "executionOutcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "requiredEventContext"],
+          "properties": {
+            "version": { "const": "1.0.0" },
+            "requiredEventContext": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["eventType", "eventVersion", "source", "path"],
+                "properties": {
+                  "eventType": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "eventVersion": { "type": "string", "minLength": 1, "maxLength": 80 },
+                  "source": { "enum": ["payload", "scope"] },
+                  "path": { "type": "string", "minLength": 1, "maxLength": 512 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "documentation": {
       "type": "object",
       "additionalProperties": false,

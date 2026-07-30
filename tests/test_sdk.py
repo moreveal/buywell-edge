@@ -10,7 +10,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from buywell_edge_sdk.package import build_package, verify_package
-from buywell_edge_sdk.contracts import AdapterContext, adapter_driver, module
+from buywell_edge_sdk.contracts import ActionContext, AdapterContext, ExecutionOutcome, adapter_driver, module
 from buywell_edge_sdk.runtime import ExtensionRuntime
 
 
@@ -30,6 +30,43 @@ def test_manifest_is_generated_from_typed_contracts():
         "ru": "Префикс сообщения",
         "en": "Message prefix",
     }
+
+
+@pytest.mark.asyncio
+async def test_execution_outcome_contract_and_runtime_delivery(tmp_path: Path):
+    extension = module(
+        extension_id="example.outcomes",
+        version="1.0.0",
+        display_name={"ru": "Результаты", "en": "Outcomes"},
+        publisher="Buywell",
+        entrypoint="outcomes:extension",
+    )
+    received = []
+
+    @extension.execution_outcomes(required_event_context=[{
+        "eventType": "commerce.purchase.created",
+        "eventVersion": "1.0.0",
+        "source": "scope",
+        "path": "orderId",
+    }])
+    async def outcome(context: ActionContext, value: ExecutionOutcome) -> dict:
+        received.append((context.event_scope, value.terminal_status))
+        return {"accepted": True}
+
+    assert extension.manifest()["contracts"]["executionOutcomes"]["version"] == "1.0.0"
+    runtime = ExtensionRuntime(extension)
+    await runtime.handle({
+        "type": "initialize", "requestId": "init", "connectionId": "connection",
+        "instanceId": "instance", "stateDirectory": str(tmp_path),
+    })
+    result = await runtime.handle({
+        "type": "execution-outcome", "requestId": "request", "jobId": "job",
+        "idempotencyKey": "execution-outcome:execution", "executionId": "execution",
+        "terminalStatus": "failed", "finishedAt": "2026-07-30T12:00:00Z",
+        "context": {"eventScope": {"orderId": "order"}},
+    })
+    assert result["status"] == "success"
+    assert received == [({"orderId": "order"}, "failed")]
 
 
 def test_adapter_secrets_are_discovered():

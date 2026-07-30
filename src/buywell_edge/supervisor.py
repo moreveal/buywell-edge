@@ -32,7 +32,7 @@ EventHandler = Callable[[ExtensionProcess, dict[str, Any]], Awaitable[None]]
 
 def job_idempotency_key(job: dict[str, Any]) -> str:
     key = str(job.get("idempotencyKey") or job.get("requestId") or job["jobId"])
-    if job.get("jobKind") == "input-resolver":
+    if job.get("jobKind") in ("input-resolver", "execution-outcome"):
         return f"{key}:delivery:{int(job.get('deliveryAttempt') or 1)}"
     return key
 
